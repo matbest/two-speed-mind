@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "twospeed"
+version = "0.0.1"
+description = "A two-speed mind: a slow-deep compiler and a fast reader over a self-selecting knowledge base."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+# A real local model adapter is the last task; keep these out of the core.
+# local = ["llama-cpp-python>=0.2"]
+
+[project.scripts]
+twospeed = "twospeed.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/twospeed"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
