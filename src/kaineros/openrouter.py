@@ -29,6 +29,7 @@ from .cloud import (
     _bool_schema,
     better_prompt,
     candidates_from_items,
+    conflicts_prompt,
     phrase_user,
     same_account_prompt,
     same_claim_prompt,
@@ -218,6 +219,9 @@ class OpenRouterJudge:
 
     def same_account(self, gene: str, a: Candidate, b: Candidate) -> bool:
         return self._verdict("same_account", same_account_prompt(gene, a, b))
+
+    def conflicts(self, a: Candidate, b: Candidate) -> bool:
+        return self._verdict("conflicts", conflicts_prompt(a, b))
 
 
 class OpenRouterSlowModel:

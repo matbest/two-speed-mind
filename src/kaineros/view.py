@@ -27,7 +27,11 @@ def _tokens_line(total: int | None, hour: int | None) -> str | None:
 
 
 def deep_panel(
-    report: CompileReport, store: Store, tokens_total: int | None = None, tokens_hour: int | None = None
+    report: CompileReport,
+    store: Store,
+    tokens_total: int | None = None,
+    tokens_hour: int | None = None,
+    pending_questions: int = 0,
 ) -> str:
     """The deep brain's report: last pass's tallies, the backlog, the population, its token cost.
 
@@ -45,6 +49,8 @@ def deep_panel(
     tl = _tokens_line(tokens_total, tokens_hour)
     if tl:
         lines.append(tl)
+    if pending_questions:
+        lines.append(f"questions to ask: {pending_questions} pending")
     if report.error:
         lines.append(f"last pass FAILED: {report.error[:70]} (will retry)")
     return "\n".join(lines)

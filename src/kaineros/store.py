@@ -4,7 +4,7 @@ A dumb data holder — the selection logic lives in `compiler.py`, retrieval in 
 """
 from __future__ import annotations
 
-from .schema import Candidate, Page
+from .schema import Candidate, Page, Question
 
 
 class Store:
@@ -13,6 +13,18 @@ class Store:
         self.pool: dict[str, list[Candidate]] = {}
         # gene -> promoted page (the clean layer — the kainome)
         self.clean: dict[str, Page] = {}
+        # disambiguation questions the deep brain queued (spec §36-39)
+        self.questions: list[Question] = []
+
+    def pending_questions(self) -> list[Question]:
+        return [q for q in self.questions if q.status == "pending"]
+
+    def has_question_for(self, genes: tuple[str, ...]) -> bool:
+        """Is a question (any status but answered) already covering this exact conflict?"""
+        key = frozenset(genes)
+        return any(
+            frozenset(q.genes) == key and q.status != "answered" for q in self.questions
+        )
 
     def genes(self) -> list[str]:
         return list(self.pool.keys())

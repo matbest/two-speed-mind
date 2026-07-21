@@ -18,7 +18,7 @@ import re
 import time
 from pathlib import Path
 
-from .schema import Candidate, Page, Provenance
+from .schema import Candidate, Page, Provenance, Question
 from .store import Store
 
 SCHEMA_VERSION = 1
@@ -98,6 +98,25 @@ def save_store(store: Store, home: str | Path) -> None:
         ],
     }
     _atomic_write(home / "pages.json", pages_doc)
+
+    _atomic_write(
+        home / "questions.json",
+        {
+            "schema_version": SCHEMA_VERSION,
+            "questions": [
+                {
+                    "id": q.id,
+                    "text": q.text,
+                    "genes": list(q.genes),
+                    "status": q.status,
+                    "created_at": q.created_at,
+                    "asked_at": q.asked_at,
+                    "answered_at": q.answered_at,
+                }
+                for q in store.questions
+            ],
+        },
+    )
     _render_wiki(store, home / "kainome")
 
 
@@ -163,6 +182,21 @@ def load_store(home: str | Path) -> Store:
                 for c in candidates
             ]
 
+    q_file = home / "questions.json"
+    if q_file.exists():
+        for d in _read(q_file).get("questions", []):
+            store.questions.append(
+                Question(
+                    text=d["text"],
+                    genes=tuple(d.get("genes", ())),
+                    status=d.get("status", "pending"),
+                    id=d["id"],
+                    created_at=d.get("created_at", 0.0),
+                    asked_at=d.get("asked_at", 0.0),
+                    answered_at=d.get("answered_at", 0.0),
+                )
+            )
+
     pages_file = home / "pages.json"
     if pages_file.exists():
         doc = _read(pages_file)
@@ -196,7 +230,7 @@ def load_store(home: str | Path) -> Store:
 def erase(home: str | Path) -> None:
     """Delete the persisted mind (pool + pages + wiki). Used by `/forget all` after confirmation."""
     home = Path(home)
-    for name in ("pool.json", "pages.json"):
+    for name in ("pool.json", "pages.json", "questions.json"):
         f = home / name
         if f.exists():
             f.unlink()

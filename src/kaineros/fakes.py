@@ -25,10 +25,13 @@ class FakeJudge:
         key: Callable[[Candidate], float] | None = None,
         claim_of: Callable[[Candidate], object] | None = None,
         account_of: Callable[[Candidate], object] | None = None,
+        conflict_pred: Callable[[Candidate, Candidate], bool] | None = None,
     ) -> None:
         self.key = key or (lambda c: float(len(c.content)))
         self.claim_of = claim_of or (lambda c: c.gene)
         self.account_of = account_of or (lambda c: c.content)
+        # default: nothing conflicts, so existing tests never queue questions
+        self.conflict_pred = conflict_pred or (lambda a, b: False)
 
     def better(self, gene: str, a: Candidate, b: Candidate) -> bool:
         return self.key(a) > self.key(b)
@@ -38,6 +41,9 @@ class FakeJudge:
 
     def same_account(self, gene: str, a: Candidate, b: Candidate) -> bool:
         return self.account_of(a) == self.account_of(b)
+
+    def conflicts(self, a: Candidate, b: Candidate) -> bool:
+        return self.conflict_pred(a, b)
 
 
 class FakeSlowModel:

@@ -33,6 +33,13 @@ class Judge(Protocol):
         """
         ...
 
+    def conflicts(self, a: Candidate, b: Candidate) -> bool:
+        """The disambiguation primitive (spec §36): do `a` and `b` CONTRADICT — can they not both
+        be true? ("backend engineer" vs "on the platform team, not backend"). Different genes, so
+        not fusion's job; the deep brain queues a question rather than pick a winner blindly.
+        """
+        ...
+
 
 class SlowModel(Protocol):
     def extract(self, turns: list[Turn]) -> list[Candidate]:

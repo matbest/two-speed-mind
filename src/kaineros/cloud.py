@@ -113,6 +113,15 @@ def same_account_prompt(gene: str, a: Candidate, b: Candidate) -> str:
     )
 
 
+def conflicts_prompt(a: Candidate, b: Candidate) -> str:
+    return (
+        "Two facts recorded about the user. Do they CONTRADICT — can they not both be true at "
+        "once? ('works as a backend engineer' vs 'moved to the platform team, not backend' "
+        "conflict; 'loves mangoes' and 'allergic to peanuts' do not). Answer only the JSON.\n"
+        f"{_describe('A', a)}\n{_describe('B', b)}"
+    )
+
+
 PHRASE_SYSTEM = (
     "You are the voice of a personal assistant. Answer the user's question using "
     "ONLY the retrieved notes. Never invent facts; if the notes conflict, say both "
@@ -188,6 +197,9 @@ class CloudJudge:
 
     def same_account(self, gene: str, a: Candidate, b: Candidate) -> bool:
         return self._verdict("same_account", same_account_prompt(gene, a, b))
+
+    def conflicts(self, a: Candidate, b: Candidate) -> bool:
+        return self._verdict("conflicts", conflicts_prompt(a, b))
 
 
 EXTRACT_SCHEMA = {

@@ -229,4 +229,23 @@ This prototype proves the *architecture* — with the model faked — as a comma
     a correction (displacement), a restatement (dedup), persona/style preferences (low-stakes),
     and chit-chat (skipped) so the machinery is visible in the wiki it leaves behind.
 
+**The mind asks (disambiguation questions)**
+36. The deep brain **queues questions it cannot resolve alone**. During housekeeping, when two
+    promoted pages **conflict** — a pairwise judge verdict, `conflicts(a, b)` — but are *not* the
+    same claim (so fusion doesn't apply), it cannot know which is true. Rather than leave the
+    contradiction sitting in the wiki (as the backend-vs-platform case did), it **queues a
+    disambiguation question**.
+37. The question is **grounded**, like `why`: its text is built from the conflicting pages' own
+    words — "You've told me both: X, and Y — which is right?" — not invented by a model, and it
+    carries the genes it came from, so it is auditable. Questions persist beside the wiki
+    (`questions.json`), pending until asked. They are deduped (one pending question per conflict)
+    and not re-asked once answered.
+38. The **fast brain asks** — on the interactive path, after answering a turn, it surfaces one
+    pending question (never an interrogation; one at a time). `/questions` lists the queue; the
+    deep-brain panel shows the pending count.
+39. The **answer becomes a fact through the normal pipeline** — the user's reply is an ordinary
+    turn: extracted, it competes, and (a fresh stated account) displaces the stale page it
+    resolves. The question only *prompted* the turn; it is never a shortcut around competition or
+    grounding. The question is then marked answered.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

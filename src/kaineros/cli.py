@@ -29,6 +29,7 @@ HELP = (
     "  /help      show this\n"
     "  /notebook  show the kainome (promoted pages - the clean knowledge base)\n"
     "  /why       the grounded reason behind the last answer\n"
+    "  /questions the disambiguation questions the mind has queued to ask\n"
     "  /model     show or switch models: /model deep|fast [model-id]  (--cloud only)\n"
     "  /profile   list profiles, or /profile <name> to switch (each has its own wiki)\n"
     "  /persona   /persona <name> builds a fresh wiki from a scripted person (watch it grow)\n"
@@ -79,6 +80,7 @@ class Session:
         self.deep_meter = TokenMeter()
         self.fast_meter = TokenMeter()
         self.on_compiled = None  # callback fired after each background pass (cockpit repaint)
+        self._asked = None       # the question surfaced last turn, awaiting the user's answer
         self.retry_backoff = 0.5  # base seconds between failed-pass retries (tests shrink it)
         self._wake = threading.Event()
         if background:
@@ -150,6 +152,12 @@ class Session:
             erase(self.store_dir)
 
     def turn(self, text: str) -> Response:
+        # a turn following a question the mind asked IS the answer to it (spec §39) — mark it
+        # answered; the fact itself lands through the normal extract → compete pipeline
+        if self._asked is not None and self._asked.status == "asked":
+            self._asked.status = "answered"
+            self._asked.answered_at = time.time()
+        self._asked = None
         self.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
         if self.background:
             self._wake.set()  # the answer never waits for the slow brain (spec §24)
@@ -158,6 +166,17 @@ class Session:
         resp = self.runtime.respond(text, self.buffer)
         self.last_response = resp
         return resp
+
+    def take_question(self):
+        """The fast brain asks the oldest pending question (spec §38), marking it asked. One only."""
+        pending = self.store.pending_questions()
+        if not pending:
+            return None
+        q = pending[0]
+        q.status = "asked"
+        q.asked_at = time.time()
+        self._asked = q
+        return q
 
     def forget(self) -> None:
         self.buffer.clear()
@@ -233,7 +252,10 @@ def _print_cockpit(console, session: Session) -> None:
 
     resp = session.last_response
     dm, fm = session.deep_meter, session.fast_meter
-    deep = deep_panel(session.compiler.last_report, session.store, dm.total, dm.last_hour())
+    deep = deep_panel(
+        session.compiler.last_report, session.store, dm.total, dm.last_hour(),
+        pending_questions=len(session.store.pending_questions()),
+    )
     fast = fast_panel(resp.trace if resp else None, resp, session.buffer, fm.total, fm.last_hour())
     grid = Table.grid(expand=True)
     grid.add_column(ratio=1)
@@ -500,6 +522,12 @@ def main(argv: list[str] | None = None) -> int:
                 print("  " + why)
             elif cmd == "/model":
                 _cmd_model(session, line.split()[1:])
+            elif cmd == "/questions":
+                pend = session.store.pending_questions()
+                if not pend:
+                    print("  (no open questions)")
+                for qq in pend:
+                    print("  ? " + qq.text)
             elif cmd == "/persona":
                 _cmd_persona(session, line.split()[1:], pinned, console)
             elif cmd == "/profile":
@@ -546,6 +574,9 @@ def main(argv: list[str] | None = None) -> int:
         elif console is not None:
             _print_cockpit(console, session)  # console can't pin: panels print inline
         print("mind> " + resp.answer)
+        q = session.take_question()  # the mind asks a queued disambiguation, if any (spec §38)
+        if q is not None:
+            print("mind? " + q.text)
 
     if session.background and session.backlog() > 0:
         print(f"(compiling {session.backlog()} remaining turn(s) before quitting...)")

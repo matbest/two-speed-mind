@@ -16,7 +16,7 @@ import time
 from dataclasses import replace
 
 from .interfaces import Judge
-from .schema import Candidate, CompileReport, Page
+from .schema import Candidate, CompileReport, Page, Question
 from .store import Store
 
 
@@ -66,6 +66,7 @@ class Compiler:
         for gene in list(self.store.pool):
             split += self._fission(gene)
         fused = self._fusion()
+        queued = 0
 
         promoted: list[Page] = []
         for gene, pool in self.store.pool.items():
@@ -94,15 +95,51 @@ class Compiler:
                 self.store.clean[gene] = new_page
                 promoted.append(new_page)
 
+        queued = self._curate()  # spec §36: queue disambiguation questions for conflicting pages
         self.last_report = CompileReport(
             inserted=self._inserted_since_pass,
             merged=merged,
             split=split,
             fused=fused,
             promoted=len(promoted),
+            queued=queued,
         )
         self._inserted_since_pass = 0
         return promoted
+
+    def _curate(self) -> int:
+        """Queue a disambiguation question for each conflicting pair of promoted pages (spec §36).
+
+        Grounded and non-destructive: the question text is built from the two pages' own words,
+        both pages keep serving, and the user's answer resolves it through normal competition.
+        Deduped — one pending question per conflict.
+        """
+        queued = 0
+        genes = list(self.store.clean)
+        for i in range(len(genes)):
+            for j in range(i + 1, len(genes)):
+                ga, gb = genes[i], genes[j]
+                pa, pb = self.store.clean[ga], self.store.clean[gb]
+                a = Candidate(gene=ga, content=pa.content, provenance=pa.provenance)
+                b = Candidate(gene=gb, content=pb.content, provenance=pb.provenance)
+                if self.judge.same_claim(ga, a, b):
+                    continue  # fusion's job, not a question
+                if not self.judge.conflicts(a, b):
+                    continue
+                if self.store.has_question_for((ga, gb)):
+                    continue  # already pending — don't nag twice
+                self.store.questions.append(
+                    Question(
+                        text=(
+                            f"You've told me both: \"{pa.content}\" and \"{pb.content}\". "
+                            "Which is right — or are both true?"
+                        ),
+                        genes=(ga, gb),
+                        created_at=time.time(),
+                    )
+                )
+                queued += 1
+        return queued
 
     # -- the maintenance steps ---------------------------------------------------------------
 

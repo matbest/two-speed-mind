@@ -80,6 +80,22 @@ class Lookup:
 
 
 @dataclass
+class Question:
+    """A disambiguation the deep brain queued and the fast brain will ask (spec §36-39).
+
+    Grounded: `text` is built from the conflicting pages' words, `genes` records where it came
+    from. Its answer flows back through the normal pipeline as an ordinary turn.
+    """
+    text: str
+    genes: tuple[str, ...] = ()
+    status: str = "pending"             # "pending" | "asked" | "answered"
+    id: str = field(default_factory=lambda: _new_id("q"))
+    created_at: float = 0.0
+    asked_at: float = 0.0
+    answered_at: float = 0.0
+
+
+@dataclass
 class CompileReport:
     """One housekeeping pass's tally (spec §19) — the deep brain's receipt."""
     inserted: int = 0                   # candidates inserted since the previous pass
@@ -87,6 +103,7 @@ class CompileReport:
     split: int = 0                      # fissions (Slice 4.5)
     fused: int = 0                      # fusions (Slice 4.5)
     promoted: int = 0                   # pages promoted this pass
+    queued: int = 0                     # disambiguation questions queued this pass (Slice 9)
     backlog: int = 0                    # turns awaiting compilation (set by the session)
     error: str | None = None            # a failed background pass reports here (spec §26)
 
