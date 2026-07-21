@@ -219,4 +219,14 @@ This prototype proves the *architecture* — with the model faked — as a comma
     unnamed mind stays the default so existing data is never orphaned. (A profile may later carry
     its own model choice; for now models are chosen at launch and shared across a switch.)
 
+**Personas (watch a mind form)**
+35. A **persona** is a scripted person: `personas/<name>/conversation.json` holds a description and
+    the user's turns. Running it (`kaineros persona <name>`) feeds the turns to a mind — one turn
+    fully compiled before the next, so the deep brain always has long enough — building that
+    persona's own wiki at `personas/<name>/mind/`, and reporting deep/fast token cost as it goes.
+    It is how we watch a wiki form for a realistic person and judge the local-compute cost (§33) on
+    a real workload. Ships with `programmer`, `elderly`, `teenager` — each mixing durable facts,
+    a correction (displacement), a restatement (dedup), persona/style preferences (low-stakes),
+    and chit-chat (skipped) so the machinery is visible in the wiki it leaves behind.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

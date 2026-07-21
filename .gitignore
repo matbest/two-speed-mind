@@ -25,3 +25,5 @@ data/
 .DS_Store
 
 .openrouter_key
+
+personas/*/mind/

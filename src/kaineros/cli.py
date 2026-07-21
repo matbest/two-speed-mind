@@ -337,6 +337,10 @@ def main(argv: list[str] | None = None) -> int:
         from .evals import main as evals_main
 
         return evals_main(args[1:])
+    if args and args[0] == "persona":  # `kaineros persona <name> [--free|--openrouter|--fakes]`
+        from .persona import main as persona_main
+
+        return persona_main(args[1:])
     plain = "--plain" in args or not sys.stdout.isatty()
 
     # the mind's home on disk (spec §20): default under LOCALAPPDATA, --mind / env override

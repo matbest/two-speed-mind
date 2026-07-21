@@ -1,0 +1,20 @@
+{
+  "persona": "programmer",
+  "description": "Sam, a backend/platform engineer at a startup. Terse, technical, late-night worker.",
+  "turns": [
+    "Hey, I'm Sam. I work as a backend engineer.",
+    "Mostly I write Rust these days, though I started out in Python.",
+    "I'm at a startup called Nimbus - we build data infrastructure.",
+    "ugh, another flaky CI run, third one today",
+    "Please keep your answers short and technical, I don't need hand-holding.",
+    "I've got a dog, a border collie named Biscuit.",
+    "Actually, correction - I switched teams last month. I'm on the platform team now, not backend.",
+    "I usually work late; I'm most productive after 10pm.",
+    "I use Neovim, by the way, not VSCode.",
+    "My partner Alex and I are planning a trip to Japan in the spring.",
+    "Coffee is life. Flat white, no sugar.",
+    "Like I said, I mostly write Rust now.",
+    "I'm allergic to shellfish - worth knowing if we ever talk food.",
+    "I'm really into mechanical keyboards; currently on a tactile-switch build."
+  ]
+}
