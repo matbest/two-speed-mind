@@ -76,7 +76,13 @@ class Compiler:
             for challenger in pool[1:]:
                 challenger.wins = 0  # the streak is consecutive passes at #1
             page = self.store.clean.get(gene)
-            threshold = 0 if top.provenance.stakes == "low" else self.promote_after
+            # low stakes skip competition (spec §4); so does an uncontested claim — stability
+            # is meaningless without rivals, and dedup already ran, so a pool of one means
+            # "one account, possibly restated", never "a contest in progress"
+            uncontested = len(pool) == 1
+            threshold = (
+                0 if (top.provenance.stakes == "low" or uncontested) else self.promote_after
+            )
             if top.wins >= threshold and (page is None or page.content != top.content):
                 history = page.rank_history if page else []
                 new_page = Page(

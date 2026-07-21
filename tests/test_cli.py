@@ -41,9 +41,11 @@ def test_turns_are_extracted_exactly_once():
     assert len(set(ids)) == 3  # no turn was ever re-extracted
 
 
-def test_abstains_before_anything_is_promoted():
+def test_abstains_when_the_mind_is_empty():
+    # asked directly (no turn: the fake extractor would file the question itself as an
+    # instantly-promoted "fact", which a real extractor skips)
     s = Session()
-    resp = s.turn("what do I like?")
+    resp = s.runtime.respond("what do I like?")
     assert resp.abstained is True
 
 

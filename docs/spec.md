@@ -36,8 +36,12 @@ This prototype proves the *architecture* — with the model faked — as a comma
 3. A new candidate is placed by **binary insertion**; the current top must be *beaten* to be
    displaced (the incumbent defends its position).
 4. A candidate is **promoted** to the clean layer only once it has held the top rank across
-   `promote_after` passes. A promoted entry is a **page**. That competition is for **high-stakes**
-   facts. Low-stakes facts (persona/style) skip it entirely: insertion makes no judge calls (the
+   `promote_after` passes. A promoted entry is a **page**. **Competition needs competitors**: an
+   *uncontested* candidate — its pool holds only it, after cleanup — promotes on the next pass,
+   because waiting would filter nothing (no rival exists to displace it; a lone misreading would
+   promote after the wait anyway). `promote_after` measures stability only once a claim is
+   contested; restatement never contests (§11 merges it first), a genuine rival always does.
+   That competition is for **high-stakes** facts. Low-stakes facts (persona/style) skip it entirely: insertion makes no judge calls (the
    newest account goes straight to the top — for style, recency *is* the right answer) and the top
    promotes on the next pass. Trivia is not worth judgment, but it still carries provenance and is
    served like any page.

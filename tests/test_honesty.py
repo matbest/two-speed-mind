@@ -57,12 +57,13 @@ def test_low_stakes_skip_judging_and_promote_immediately():
     assert page.content == "call me Matty"    # newest wins — for style, recency IS the answer
 
 
-def test_high_stakes_still_earn_promotion():
+def test_contested_high_stakes_still_earn_promotion():
     store = Store()
     comp = Compiler(store, FakeJudge(), promote_after=3)
-    comp.insert(cand("home", "i live in berlin"))
+    comp.insert(cand("home", "i live in berlin today"))
+    comp.insert(cand("home", "i live in london"))  # a rival: the claim is contested
     comp.housekeep()
-    assert store.page("home") is None         # one pass at #1 is not stability
+    assert store.page("home") is None         # one pass at #1 is not stability, under contest
 
 
 # -- hedging: decided by provenance, never by the model (spec §6) -------------------------------

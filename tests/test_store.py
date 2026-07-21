@@ -41,11 +41,21 @@ def test_loser_not_destroyed():
     assert {c.content for c in store.candidates("food")} == {"top", "weak"}
 
 
-def test_not_promoted_before_threshold():
+def test_contested_claim_not_promoted_before_threshold():
     store, comp = make_compiler(promote_after=3)
     comp.insert(cand("food", "apple", score=5))
+    comp.insert(cand("food", "apricot", score=1))  # a rival: the claim is contested
     comp.housekeep()  # only 1 pass at #1
-    assert store.page("food") is None
+    assert store.page("food") is None  # stability must be earned once there is competition
+
+
+def test_uncontested_claim_promotes_immediately():
+    # spec §4: competition needs competitors — a pool of one has already won
+    store, comp = make_compiler(promote_after=3)
+    comp.insert(cand("food", "apple", score=5))
+    promoted = comp.housekeep()
+    assert store.page("food") is not None
+    assert any(p.gene == "food" for p in promoted)
 
 
 def test_promote_after_threshold():
