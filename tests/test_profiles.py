@@ -33,3 +33,22 @@ def test_list_profiles_reads_the_profiles_dir(tmp_path, monkeypatch):
     Session(store_dir=profiles.mind_dir("programmer")).turn("i use rust daily")
     Session(store_dir=profiles.mind_dir("teenager")).turn("i love tiktok")
     assert profiles.list_profiles() == ["programmer", "teenager"]
+
+
+def test_no_name_is_the_default_profile(tmp_path, monkeypatch):
+    monkeypatch.setenv("KAINEROS_HOME", str(tmp_path))
+    d = profiles.default_mind_dir()
+    assert d.endswith(str(__import__("os").path.join("profiles", "default", "mind")))
+
+
+def test_legacy_mind_migrates_into_default_profile(tmp_path, monkeypatch):
+    monkeypatch.setenv("KAINEROS_HOME", str(tmp_path))
+    legacy = str(tmp_path / "mind")  # a pre-profiles mind
+    Session(store_dir=legacy).turn("i live in st leonards")  # a real fact on disk
+    assert (tmp_path / "mind" / "pool.json").exists()
+
+    dest = profiles.default_mind_dir()  # first launch under the profiles model
+    assert (tmp_path / "profiles" / "default" / "mind" / "pool.json").exists()
+    assert not (tmp_path / "mind").exists()          # legacy moved, not copied
+    assert Session(store_dir=dest).store.pages()       # the fact survived the migration
+    assert "default" in profiles.list_profiles()

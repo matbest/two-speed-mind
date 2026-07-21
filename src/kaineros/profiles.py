@@ -8,19 +8,37 @@ default so existing data is never orphaned.
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
+
+DEFAULT = "default"
+
+
+def _base() -> Path:
+    return Path(
+        os.environ.get("KAINEROS_HOME")
+        or (Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "kaineros")
+    )
 
 
 def _root() -> Path:
-    base = os.environ.get("KAINEROS_HOME") or (
-        Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "kaineros"
-    )
-    return Path(base) / "profiles"
+    return _base() / "profiles"
 
 
 def mind_dir(name: str) -> str:
     """The mind home for a named profile."""
     return str(_root() / name / "mind")
+
+
+def default_mind_dir() -> str:
+    """The default profile's mind — migrating a pre-profiles mind (kaineros\\mind) into it once,
+    so no name given still means a real, listable 'default' profile without orphaning old data."""
+    dest = _root() / DEFAULT / "mind"
+    legacy = _base() / "mind"
+    if not dest.exists() and legacy.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy), str(dest))
+    return str(dest)
 
 
 def list_profiles() -> list[str]:

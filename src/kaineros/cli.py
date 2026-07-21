@@ -349,17 +349,18 @@ def main(argv: list[str] | None = None) -> int:
 
     from . import profiles
 
-    profile = "(default)"
     if "--mind" in args:  # explicit path escape hatch (tests, one-offs)
         mind = args[args.index("--mind") + 1]
+        profile = "(custom)"
+    elif os.environ.get("KAINEROS_MIND"):  # explicit env path
+        mind = os.environ["KAINEROS_MIND"]
         profile = "(custom)"
     elif "--profile" in args:  # a named profile — its own wiki (spec §34)
         profile = args[args.index("--profile") + 1]
         mind = profiles.mind_dir(profile)
-    else:
-        mind = os.environ.get("KAINEROS_MIND") or str(
-            Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "kaineros" / "mind"
-        )
+    else:  # no name given -> the 'default' profile (migrating any pre-profiles mind into it)
+        profile = profiles.DEFAULT
+        mind = profiles.default_mind_dir()
 
     console = None
     vt_ok = False
