@@ -20,26 +20,60 @@ you talk ─► short-term buffer ───────────────�
   - `Candidate` — an *allele*: a competing version of a fact about a `gene`, with provenance and a
     `wins` counter (how many passes it has held #1).
   - `Page` — a promoted clean entry (gene, content, provenance, `rank_history`).
-  - `Response` — `answer` (words) + `why` (grounded reason) + `used: list[Page]` + `abstained: bool`.
+  - `Response` — `answer` (words) + `why` (grounded reason) + `used: list[Page]` + `abstained: bool`
+    + `trace: Lookup` (the retrieval record the `why` and the lookup panel render from).
+  - `Lookup` — one retrieval's real record: the query terms probed, per-page match strength, and
+    each page's floor decision (admitted / blocked / no match); plus the floor in force. Funds the
+    fast brain's cockpit panel.
+  - `CompileReport` — one housekeeping pass's real tally: candidates inserted/merged, pools
+    split/fused, pages promoted, backlog (turns awaiting compilation). Funds the deep brain's
+    cockpit panel; the compiler keeps its latest as `last_report`.
 
 - **interfaces.py** — the model boundary (Protocols):
   - `Judge.better(gene, a, b) -> bool` — the reliable primitive: *is A a better account than B?*
+  - `Judge.same_claim(gene, a, b) -> bool` — the fission/fusion primitive: *are A and B rival
+    accounts of one claim?* (Slice 4.5; also pairwise — never a score, never a cluster.)
+  - `Judge.same_account(gene, a, b) -> bool` — the dedup primitive, one grain finer: *do A and B
+    assert the same thing?* (Slice 4.5; housekeeping merges restatements — insert never asks this.)
   - `SlowModel.extract(turns) -> list[Candidate]` — compile raw turns into candidate facts.
   - `FastModel.answer(question, pages, buffer) -> str` — phrase an answer from retrieved pages.
 
 - **store.py** — `Store`: the `pool` (`dict[gene, list[Candidate]]`, ranked best-first) and the
   `clean` layer (`dict[gene, Page]`). Dumb data holder; logic lives in the compiler/runtime.
 
-- **compiler.py** — `Compiler(store, judge, promote_after=3)` (slow-deep):
+- **compiler.py** — `Compiler(store, judge, promote_after=3, split_after=8)` (slow-deep):
   - `insert(candidate)` — binary-insert into the gene's pool by the judge; incumbent defends.
-  - `housekeep() -> list[Page]` — promote any gene whose top has held #1 for `promote_after` passes.
+    Deliberately cheap (~log n comparisons, no identity checks) — repair work belongs to housekeep.
+  - `housekeep() -> list[Page]` — the slow brain's maintenance pass, in order (order matters —
+    each step keeps the next step's signal honest): **dedup** each pool (Slice 4.5: merge
+    `same_account` candidates into the best-ranked; receipts accumulate, `created_at` refreshes,
+    survivor keeps rank/`wins`); **fission** (Slice 4.5: split any pool still past `split_after` —
+    top keeps the gene, the rest re-keyed to a fresh gene and re-inserted, page retired, `wins`
+    reset); **fusion** (Slice 4.5: merge genes whose *promoted pages* state one claim — older key
+    survives, pools re-insert, pages retire); **promotion** (any gene whose top has held #1 for
+    `promote_after` passes).
 
 - **runtime.py** — `Runtime(store, fast_model, confidence_floor="low")` (fast):
   - `respond(question, buffer=None) -> Response` — retrieve pages above the floor; abstain if none;
-    else phrase via the fast model. `why` is built from the retrieved pages' genes + provenance.
+    else phrase via the fast model. `why` and `trace` are built from the retrieved pages' genes +
+    provenance.
 
-- **cli.py** — the chat REPL. Plain text → a turn (buffered; compiler consolidates). Slash commands:
+- **view.py** — pure renderers (state in, text/renderables out — no I/O, no model): the
+  **deep-brain panel** (a `CompileReport` + the store: last pass's tallies, backlog, population
+  with wins-bars toward `promote_after`, promoted pages marked) and the **fast-brain panel** (a
+  `Lookup` trace + what was handed to the fast model: probed terms → hits → floor decisions, pages
+  used, buffer fill). Pure functions so the cockpit is testable without a terminal.
+
+- **cli.py** — the chat shell. Default is the **cockpit** (spec §18): `rich` panels redrawn after
+  each turn — deep brain top-left, fast brain top-right, conversation below, `input()` at the
+  bottom; the panels just print `view.py` output. `--plain` drops the panels for a line-based REPL
+  (scripts, pipes, tests). Plain text → a turn (buffered; compiler consolidates). Slash commands:
   `/help`, `/notebook` (show pages), `/why` (last response's grounded reason), `/forget`, `/quit`.
+  A live event-driven TUI (Textual) is a later upgrade; the renderers already suit it.
+  The session owns the buffer and `compiled_upto` (spec §17, exactly-once): per turn — append the
+  turn; `extract(buffer[compiled_upto:])`; advance the marker; `insert` each candidate;
+  `housekeep`; `respond`. The backlog (`len(buffer) - compiled_upto`) and buffer fill are what the
+  panels report.
 
 ## Testing strategy
 
