@@ -23,3 +23,5 @@ data/
 .vscode/
 .idea/
 .DS_Store
+
+.openrouter_key

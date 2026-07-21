@@ -29,20 +29,35 @@ def load_corpus(path: Path = CORPUS) -> list[dict]:
         return tomllib.load(f)["scenario"]
 
 
-def build_session(fakes: bool) -> Session:
+def build_session(fakes: bool, openrouter: bool = False) -> Session:
     if fakes:
         return Session()
-    from .cloud import CloudFastModel, CloudJudge, CloudSlowModel, preflight
+    if openrouter:
+        from .openrouter import (
+            OpenRouterFastModel,
+            OpenRouterJudge,
+            OpenRouterSlowModel,
+            preflight,
+        )
 
-    preflight()
-    session = Session(judge=CloudJudge(), slow=CloudSlowModel(), fast=CloudFastModel())
+        preflight()
+        session = Session(
+            judge=OpenRouterJudge(), slow=OpenRouterSlowModel(), fast=OpenRouterFastModel()
+        )
+    else:
+        from .cloud import CloudFastModel, CloudJudge, CloudSlowModel, preflight
+
+        preflight()
+        session = Session(judge=CloudJudge(), slow=CloudSlowModel(), fast=CloudFastModel())
     session.cloud = True
     return session
 
 
-def run_scenario(scenario: dict, fakes: bool) -> list[tuple[str, bool, str]]:
+def run_scenario(
+    scenario: dict, fakes: bool, openrouter: bool = False
+) -> list[tuple[str, bool, str]]:
     """Returns one (label, passed, detail) per expectation."""
-    session = build_session(fakes)
+    session = build_session(fakes, openrouter)
     for text in scenario["turns"]:
         session.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
         session.consolidate()
@@ -79,6 +94,7 @@ def run_scenario(scenario: dict, fakes: bool) -> list[tuple[str, bool, str]]:
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     fakes = "--fakes" in args
+    openrouter = "--openrouter" in args
     only = None
     if "--only" in args:
         only = args[args.index("--only") + 1].lower()
@@ -92,16 +108,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if not fakes:
         try:
-            build_session(fakes=False)
+            build_session(fakes=False, openrouter=openrouter)
         except RuntimeError as exc:
             print(f"error: {exc}")
             return 1
 
-    print(f"running {len(scenarios)} scenario(s) on {'fakes' if fakes else 'cloud models'}\n")
+    backend = "fakes" if fakes else ("openrouter" if openrouter else "cloud models")
+    print(f"running {len(scenarios)} scenario(s) on {backend}\n")
     passed = failed = 0
     for scenario in scenarios:
         print(f"== {scenario['name']}")
-        for label, ok, detail in run_scenario(scenario, fakes):
+        for label, ok, detail in run_scenario(scenario, fakes, openrouter):
             mark = "PASS" if ok else "FAIL"
             passed += ok
             failed += not ok

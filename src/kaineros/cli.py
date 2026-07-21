@@ -105,7 +105,7 @@ def _print_cockpit(console, session: Session) -> None:
 def _cmd_model(session: Session, args: list[str]) -> None:
     """/model — show or switch the per-brain models (arguments-first, picker as fallback)."""
     if not session.cloud:
-        print("  /model needs --cloud (the fakes have no models to pick)")
+        print("  /model needs --cloud or --openrouter (the fakes have no models to pick)")
         return
     judge, slow, fast = session.compiler.judge, session.slow, session.runtime.model
     if not args:
@@ -119,7 +119,7 @@ def _cmd_model(session: Session, args: list[str]) -> None:
     if len(args) >= 2:
         name = args[1]
     else:
-        ids = [m.id for m in slow.client.models.list()]
+        ids = slow.list_models()
         for i, mid in enumerate(ids, 1):
             print(f"  {i}) {mid}")
         pick = input("  pick> ").strip()
@@ -158,12 +158,30 @@ def main(argv: list[str] | None = None) -> int:
             preflight()
             session = Session(judge=CloudJudge(), slow=CloudSlowModel(), fast=CloudFastModel())
             session.cloud = True
-            print("(cloud models: deep=" + session.slow.model + ", fast=" + session.runtime.model.model + ")")
+        except RuntimeError as exc:
+            print(f"error: {exc}")
+            return 1
+    elif "--openrouter" in args:
+        try:
+            from .openrouter import (
+                OpenRouterFastModel,
+                OpenRouterJudge,
+                OpenRouterSlowModel,
+                preflight,
+            )
+
+            preflight()
+            session = Session(
+                judge=OpenRouterJudge(), slow=OpenRouterSlowModel(), fast=OpenRouterFastModel()
+            )
+            session.cloud = True
         except RuntimeError as exc:
             print(f"error: {exc}")
             return 1
     else:
         session = Session()
+    if session.cloud:
+        print(f"(models: deep={session.slow.model}, fast={session.runtime.model.model})")
     print(BANNER)
     while True:
         try:

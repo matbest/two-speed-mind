@@ -1,0 +1,166 @@
+"""OpenRouter adapters (Slice 5): the same three roles, any provider's models.
+
+OpenRouter speaks the OpenAI chat-completions dialect, so this adapter is plain HTTP via the
+stdlib — no new dependency. The two-speed split still maps onto model tiers, routed per role:
+deep calls (extract + the three judge questions) go to the deep model, phrasing goes to the fast
+model. The prompts are shared with cloud.py — every backend asks the same questions.
+
+Key: OPENROUTER_API_KEY env var, or a git-ignored `.openrouter_key` file at the repo root.
+Models: OPENROUTER_DEEP_MODEL / OPENROUTER_FAST_MODEL env vars override the defaults, and
+`/model deep|fast <id>` switches at runtime.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+from .cloud import (
+    EXTRACT_SCHEMA,
+    EXTRACT_SYSTEM,
+    JUDGE_SYSTEM,
+    PHRASE_SYSTEM,
+    _bool_schema,
+    better_prompt,
+    candidates_from_items,
+    phrase_user,
+    same_account_prompt,
+    same_claim_prompt,
+)
+from .schema import Candidate, Page, Turn
+
+API = "https://openrouter.ai/api/v1"
+DEEP_MODEL = os.environ.get("OPENROUTER_DEEP_MODEL", "anthropic/claude-opus-4.8")
+FAST_MODEL = os.environ.get("OPENROUTER_FAST_MODEL", "anthropic/claude-haiku-4.5")
+_KEY_FILE = Path(__file__).resolve().parents[2] / ".openrouter_key"
+
+
+def _key() -> str:
+    key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if not key and _KEY_FILE.exists():
+        key = _KEY_FILE.read_text().strip()
+    if not key:
+        raise RuntimeError(
+            "OpenRouter needs a key: set OPENROUTER_API_KEY, or put the key in a "
+            ".openrouter_key file at the repo root (git-ignored)"
+        )
+    return key
+
+
+def _request(path: str, body: dict | None = None) -> dict:
+    req = urllib.request.Request(
+        API + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            data = json.load(r)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")[:300]
+        raise RuntimeError(f"openrouter {exc.code}: {detail}") from exc
+    if isinstance(data, dict) and data.get("error"):
+        raise RuntimeError(f"openrouter error: {data['error']}")
+    return data
+
+
+def _chat(model: str, system: str, user: str, schema: dict | None = None, max_tokens: int = 1024) -> str:
+    body: dict = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+    if schema is not None:
+        body["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "out", "strict": True, "schema": schema},
+        }
+    data = _request("/chat/completions", body)
+    return data["choices"][0]["message"].get("content") or ""
+
+
+def _json(content: str) -> dict:
+    """Tolerant parse — some routed models wrap the JSON in prose or code fences."""
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        m = re.search(r"\{.*\}", content, re.DOTALL)
+        if m is None:
+            raise
+        return json.loads(m.group(0))
+
+
+def preflight() -> None:
+    """Fail fast with a clear message — one tiny fast-model call proves key + route."""
+    try:
+        _chat(FAST_MODEL, "You reply with the single word: ok", "ping", max_tokens=8)
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"openrouter preflight failed: {exc}") from exc
+
+
+def list_models() -> list[str]:
+    return sorted(m["id"] for m in _request("/models")["data"])
+
+
+class OpenRouterJudge:
+    """Deep-role pairwise verdicts, forced-choice — same prompts as the cloud judge."""
+
+    def __init__(self, model: str = DEEP_MODEL) -> None:
+        self.model = model
+
+    def _verdict(self, field: str, question: str) -> bool:
+        content = _chat(self.model, JUDGE_SYSTEM, question, schema=_bool_schema(field))
+        return bool(_json(content)[field])
+
+    def better(self, gene: str, a: Candidate, b: Candidate) -> bool:
+        return self._verdict("a_is_better", better_prompt(gene, a, b))
+
+    def same_claim(self, gene: str, a: Candidate, b: Candidate) -> bool:
+        return self._verdict("same_claim", same_claim_prompt(gene, a, b))
+
+    def same_account(self, gene: str, a: Candidate, b: Candidate) -> bool:
+        return self._verdict("same_account", same_account_prompt(gene, a, b))
+
+
+class OpenRouterSlowModel:
+    """Deep-role extraction — the same schema and rules as the cloud extractor."""
+
+    def __init__(self, model: str = DEEP_MODEL) -> None:
+        self.model = model
+
+    def list_models(self) -> list[str]:
+        return list_models()
+
+    def extract(self, turns: list[Turn]) -> list[Candidate]:
+        users = [t for t in turns if t.speaker == "user"]
+        if not users:
+            return []
+        numbered = "\n".join(f"[{i}] {t.text}" for i, t in enumerate(users))
+        content = _chat(
+            self.model,
+            EXTRACT_SYSTEM,
+            f"Conversation turns:\n{numbered}",
+            schema=EXTRACT_SCHEMA,
+            max_tokens=4096,
+        )
+        return candidates_from_items(_json(content)["candidates"], users)
+
+
+class OpenRouterFastModel:
+    """The fast-role phraser — words only, on the cheap quick model."""
+
+    def __init__(self, model: str = FAST_MODEL) -> None:
+        self.model = model
+
+    def answer(self, question: str, pages: list[Page], buffer: list[Turn]) -> str:
+        return _chat(
+            self.model, PHRASE_SYSTEM, phrase_user(question, pages, buffer), max_tokens=300
+        ).strip()

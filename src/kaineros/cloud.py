@@ -74,6 +74,83 @@ def _describe(label: str, c: Candidate) -> str:
     return f"{label} ({said}, ~{age_days:.1f} days old, confidence {prov.confidence}): {c.content}"
 
 
+# The prompts are the adapter-independent part — every backend (Anthropic API, OpenRouter, local)
+# asks the same questions; only the transport differs.
+
+JUDGE_SYSTEM = (
+    "You maintain a personal knowledge base about one user. Judge the comparison "
+    "and answer with only the JSON verdict."
+)
+
+
+def better_prompt(gene: str, a: Candidate, b: Candidate) -> str:
+    return (
+        f"Topic key: {gene}\n"
+        "Two competing accounts of the same claim about the user. Which is the better one to "
+        "believe? Prefer more accurate, more specific, and more current accounts; a newer "
+        "direct statement usually beats an older or inferred one.\n"
+        f"{_describe('A', a)}\n{_describe('B', b)}\n"
+        "Is A the better account?"
+    )
+
+
+def same_claim_prompt(gene: str, a: Candidate, b: Candidate) -> str:
+    return (
+        f"Topic key: {gene}\n"
+        "Are A and B rival accounts of the SAME claim — i.e. they answer the same question "
+        "about the user and would compete to be the truth? Same topic is NOT enough: 'loves "
+        "mangoes' and 'allergic to peanuts' are different claims.\n"
+        f"{_describe('A', a)}\n{_describe('B', b)}"
+    )
+
+
+def same_account_prompt(gene: str, a: Candidate, b: Candidate) -> str:
+    return (
+        f"Topic key: {gene}\n"
+        "Do A and B assert the same thing — is one just a restatement or paraphrase of the "
+        "other, adding no new information?\n"
+        f"{_describe('A', a)}\n{_describe('B', b)}"
+    )
+
+
+PHRASE_SYSTEM = (
+    "You are the voice of a personal assistant. Answer the user's question using "
+    "ONLY the retrieved notes. Never invent facts; if the notes conflict, say both "
+    "versions. One or two sentences, conversational."
+)
+
+
+def phrase_user(question: str, pages: list[Page], buffer: list[Turn]) -> str:
+    notes = "\n".join(f"- [{p.gene}] {p.content}" for p in pages)
+    recent = "\n".join(f"{t.speaker}: {t.text}" for t in buffer[-6:])
+    return (
+        f"Retrieved notes:\n{notes or '- (none)'}\n\n"
+        f"Recent conversation:\n{recent}\n\nQuestion: {question}"
+    )
+
+
+def candidates_from_items(items: list[dict], users: list[Turn]) -> list[Candidate]:
+    """Map the extractor's schema-validated items onto Candidates with real provenance."""
+    out: list[Candidate] = []
+    for item in items:
+        idx = min(max(0, item["source_turn"]), len(users) - 1)
+        src = users[idx]
+        out.append(
+            Candidate(
+                gene=item["gene"],
+                content=item["content"],
+                provenance=Provenance(
+                    source_turn_ids=(src.id,),
+                    created_at=src.created_at or time.time(),
+                    stated=item["stated"],
+                    confidence=item["confidence"],
+                    stakes=item["stakes"],
+                ),
+            )
+        )
+    return out
+
+
 class CloudJudge:
     """Pairwise verdicts from a strong model — forced-choice, low effort, tiny prompts."""
 
@@ -89,43 +166,19 @@ class CloudJudge:
                 "effort": "low",
                 "format": {"type": "json_schema", "schema": _bool_schema(field)},
             },
-            system=(
-                "You maintain a personal knowledge base about one user. Judge the comparison "
-                "and answer with only the JSON verdict."
-            ),
+            system=JUDGE_SYSTEM,
             messages=[{"role": "user", "content": question}],
         )
         return bool(json.loads(_first_text(resp))[field])
 
     def better(self, gene: str, a: Candidate, b: Candidate) -> bool:
-        return self._verdict(
-            "a_is_better",
-            f"Topic key: {gene}\n"
-            "Two competing accounts of the same claim about the user. Which is the better one to "
-            "believe? Prefer more accurate, more specific, and more current accounts; a newer "
-            "direct statement usually beats an older or inferred one.\n"
-            f"{_describe('A', a)}\n{_describe('B', b)}\n"
-            "Is A the better account?",
-        )
+        return self._verdict("a_is_better", better_prompt(gene, a, b))
 
     def same_claim(self, gene: str, a: Candidate, b: Candidate) -> bool:
-        return self._verdict(
-            "same_claim",
-            f"Topic key: {gene}\n"
-            "Are A and B rival accounts of the SAME claim — i.e. they answer the same question "
-            "about the user and would compete to be the truth? Same topic is NOT enough: 'loves "
-            "mangoes' and 'allergic to peanuts' are different claims.\n"
-            f"{_describe('A', a)}\n{_describe('B', b)}",
-        )
+        return self._verdict("same_claim", same_claim_prompt(gene, a, b))
 
     def same_account(self, gene: str, a: Candidate, b: Candidate) -> bool:
-        return self._verdict(
-            "same_account",
-            f"Topic key: {gene}\n"
-            "Do A and B assert the same thing — is one just a restatement or paraphrase of the "
-            "other, adding no new information?\n"
-            f"{_describe('A', a)}\n{_describe('B', b)}",
-        )
+        return self._verdict("same_account", same_account_prompt(gene, a, b))
 
 
 EXTRACT_SCHEMA = {
@@ -175,6 +228,9 @@ class CloudSlowModel:
         self.model = model
         self.client = _client()
 
+    def list_models(self) -> list[str]:
+        return [m.id for m in self.client.models.list()]
+
     def extract(self, turns: list[Turn]) -> list[Candidate]:
         users = [t for t in turns if t.speaker == "user"]
         if not users:
@@ -187,24 +243,8 @@ class CloudSlowModel:
             system=EXTRACT_SYSTEM,
             messages=[{"role": "user", "content": f"Conversation turns:\n{numbered}"}],
         )
-        out: list[Candidate] = []
-        for item in json.loads(_first_text(resp))["candidates"]:
-            idx = min(max(0, item["source_turn"]), len(users) - 1)
-            src = users[idx]
-            out.append(
-                Candidate(
-                    gene=item["gene"],
-                    content=item["content"],
-                    provenance=Provenance(
-                        source_turn_ids=(src.id,),
-                        created_at=src.created_at or time.time(),
-                        stated=item["stated"],
-                        confidence=item["confidence"],
-                        stakes=item["stakes"],
-                    ),
-                )
-            )
-        return out
+        items = json.loads(_first_text(resp))["candidates"]
+        return candidates_from_items(items, users)
 
 
 class CloudFastModel:
@@ -215,24 +255,10 @@ class CloudFastModel:
         self.client = _client()
 
     def answer(self, question: str, pages: list[Page], buffer: list[Turn]) -> str:
-        notes = "\n".join(f"- [{p.gene}] {p.content}" for p in pages)
-        recent = "\n".join(f"{t.speaker}: {t.text}" for t in buffer[-6:])
         resp = self.client.messages.create(
             model=self.model,
             max_tokens=300,
-            system=(
-                "You are the voice of a personal assistant. Answer the user's question using "
-                "ONLY the retrieved notes. Never invent facts; if the notes conflict, say both "
-                "versions. One or two sentences, conversational."
-            ),
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f"Retrieved notes:\n{notes or '- (none)'}\n\n"
-                        f"Recent conversation:\n{recent}\n\nQuestion: {question}"
-                    ),
-                }
-            ],
+            system=PHRASE_SYSTEM,
+            messages=[{"role": "user", "content": phrase_user(question, pages, buffer)}],
         )
         return _first_text(resp).strip()
