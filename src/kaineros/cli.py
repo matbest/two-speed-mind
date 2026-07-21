@@ -134,8 +134,11 @@ def _timed(fn, show: bool):
     return outcome["value"]
 
 
+HEADER_HEIGHT = 9  # rows the pinned panels occupy at the top of the screen
+
+
 def _print_cockpit(console, session: Session) -> None:
-    """The two panels (spec §18): deep brain LEFT, fast brain RIGHT — always side by side."""
+    """The two panels (spec §18): deep brain LEFT, fast brain RIGHT — fixed height, side by side."""
     from rich.panel import Panel
     from rich.table import Table
 
@@ -148,10 +151,36 @@ def _print_cockpit(console, session: Session) -> None:
     grid.add_column(ratio=1)
     grid.add_column(ratio=1)
     grid.add_row(
-        Panel(deep, title="deep brain - slow, off the clock"),
-        Panel(fast, title="fast brain - this turn"),
+        Panel(deep, title="deep brain - slow, off the clock", height=HEADER_HEIGHT),
+        Panel(fast, title="fast brain - this turn", height=HEADER_HEIGHT),
     )
     console.print(grid)
+
+
+def _paint_header(console, session: Session) -> None:
+    """Repaint the pinned panels in place, leaving the cursor where it was."""
+    with console.capture() as cap:
+        _print_cockpit(console, session)
+    sys.stdout.write("\x1b7\x1b[1;1H")  # save cursor, jump to the top-left
+    sys.stdout.write(cap.get())
+    sys.stdout.write("\x1b8")  # restore cursor into the scroll region
+    sys.stdout.flush()
+
+
+def _enter_cockpit_screen(console, session: Session) -> None:
+    """Pin the panels: clear, set the scroll region to the rows BELOW the header (VT DECSTBM) —
+    conversation scrolls up and disappears underneath the boxes; the header never moves."""
+    rows = console.size.height
+    sys.stdout.write("\x1b[2J")                        # clear screen
+    sys.stdout.write(f"\x1b[{HEADER_HEIGHT + 1};{rows}r")  # scrolling only below the header
+    sys.stdout.write(f"\x1b[{rows};1H")                # cursor to the bottom line
+    sys.stdout.flush()
+    _paint_header(console, session)
+
+
+def _exit_cockpit_screen() -> None:
+    sys.stdout.write("\x1b[r\n")  # restore full-screen scrolling
+    sys.stdout.flush()
 
 
 def _cmd_model(session: Session, args: list[str]) -> None:
@@ -255,6 +284,8 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as exc:
         print(f"error: {exc}")
         return 1
+    if console is not None:
+        _enter_cockpit_screen(console, session)
     if session.cloud:
         print(f"(models: deep={session.slow.model}, fast={session.runtime.model.model})")
     print(f"(mind: {mind} - {len(session.store.pages())} pages)")
@@ -309,9 +340,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  [model error: {exc}]")
             continue
         if console is not None:
-            _print_cockpit(console, session)
+            _paint_header(console, session)
         print("mind> " + resp.answer)
 
+    if console is not None:
+        _exit_cockpit_screen()
     print("bye.")
     return 0
 
