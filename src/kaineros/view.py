@@ -20,10 +20,19 @@ def status_bar(label: str, detail: str, offdevice: bool) -> str:
     return f"* {label} - {detail} - on-device: private"
 
 
-def deep_panel(report: CompileReport, store: Store) -> str:
-    """The deep brain's report: last pass's tallies, the backlog, and the population counts.
+def _tokens_line(total: int | None, hour: int | None) -> str | None:
+    if total is None:
+        return None
+    return f"tokens: {total:,} total · {hour:,} last hour"
+
+
+def deep_panel(
+    report: CompileReport, store: Store, tokens_total: int | None = None, tokens_hour: int | None = None
+) -> str:
+    """The deep brain's report: last pass's tallies, the backlog, the population, its token cost.
 
     Counts only — the wiki itself is browsable on disk; the panel is a gauge, not a listing.
+    Token counts (spec §33) show how much this brain would ask of a local model.
     """
     genes = store.genes()
     n_candidates = sum(len(store.candidates(g)) for g in genes)
@@ -33,17 +42,28 @@ def deep_panel(report: CompileReport, store: Store) -> str:
         f"backlog: {report.backlog} turns awaiting compilation",
         f"wiki: {len(store.clean)} pages · pool: {n_candidates} candidates in {len(genes)} genes",
     ]
+    tl = _tokens_line(tokens_total, tokens_hour)
+    if tl:
+        lines.append(tl)
     if report.error:
         lines.append(f"last pass FAILED: {report.error[:70]} (will retry)")
     return "\n".join(lines)
 
 
-def fast_panel(trace: Lookup | None, response: Response | None, buffer: list[Turn]) -> str:
+def fast_panel(
+    trace: Lookup | None,
+    response: Response | None,
+    buffer: list[Turn],
+    tokens_total: int | None = None,
+    tokens_hour: int | None = None,
+) -> str:
     """The fast brain's report: which wiki files the lookup pulled, and what the floor hid."""
     from .persist import _safe  # gene -> the filename you'd browse in kainome/
 
     if trace is None:
-        return "no lookup yet - say something"
+        head = "no lookup yet - say something"
+        tl = _tokens_line(tokens_total, tokens_hour)
+        return head + ("\n" + tl if tl else "")
     lines = [f"probed: {', '.join(trace.query_terms) or '(nothing)'}"]
     admitted = [h for h in trace.hits if h.decision == "admitted"]
     blocked = [h for h in trace.hits if h.decision == "blocked"]
@@ -59,4 +79,7 @@ def fast_panel(trace: Lookup | None, response: Response | None, buffer: list[Tur
         lines.append("abstained")
     else:
         lines.append(f"phrased from {len(response.used) if response else 0} page(s) + {len(buffer)}-turn buffer")
+    tl = _tokens_line(tokens_total, tokens_hour)
+    if tl:
+        lines.append(tl)
     return "\n".join(lines)

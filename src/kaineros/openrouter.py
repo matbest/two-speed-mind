@@ -111,7 +111,7 @@ def _request(path: str, body: dict | None = None) -> dict:
     raise RuntimeError("openrouter: retries exhausted")
 
 
-def _chat(model: str, system: str, user: str, schema: dict | None = None, max_tokens: int = 1024) -> str:
+def _chat(model, system, user, schema=None, max_tokens=1024, meter=None) -> str:
     body: dict = {
         "model": model,
         "max_tokens": max_tokens,
@@ -138,6 +138,9 @@ def _chat(model: str, system: str, user: str, schema: dict | None = None, max_to
             + json.dumps(schema)
         )
         data = _request("/chat/completions", body)
+    if meter is not None:
+        u = data.get("usage") or {}
+        meter.add(u.get("total_tokens") or (u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)))
     return data["choices"][0]["message"].get("content") or ""
 
 
@@ -192,14 +195,15 @@ def list_models() -> list[str]:
 class OpenRouterJudge:
     """Deep-role pairwise verdicts, forced-choice — same prompts as the cloud judge."""
 
-    def __init__(self, model: str = DEEP_MODEL) -> None:
+    def __init__(self, model: str = DEEP_MODEL, meter=None) -> None:
         self.model = model
+        self.meter = meter
 
     def _verdict(self, field: str, question: str) -> bool:
         # free models occasionally emit degenerate output — retry once, then default to the
         # conservative verdict (incumbent defends / not-same); never crash a housekeeping pass
         for _ in range(2):
-            content = _chat(self.model, JUDGE_SYSTEM, question, schema=_bool_schema(field))
+            content = _chat(self.model, JUDGE_SYSTEM, question, schema=_bool_schema(field), meter=self.meter)
             try:
                 return bool(_json(content).get(field, False))
             except ValueError:
@@ -219,8 +223,9 @@ class OpenRouterJudge:
 class OpenRouterSlowModel:
     """Deep-role extraction — the same schema and rules as the cloud extractor."""
 
-    def __init__(self, model: str = DEEP_MODEL) -> None:
+    def __init__(self, model: str = DEEP_MODEL, meter=None) -> None:
         self.model = model
+        self.meter = meter
 
     def list_models(self) -> list[str]:
         return list_models()
@@ -238,6 +243,7 @@ class OpenRouterSlowModel:
                 f"Conversation turns:\n{numbered}",
                 schema=EXTRACT_SCHEMA,
                 max_tokens=4096,
+                meter=self.meter,
             )
             try:
                 items = _json(content).get("candidates", [])
@@ -250,10 +256,12 @@ class OpenRouterSlowModel:
 class OpenRouterFastModel:
     """The fast-role phraser — words only, on the cheap quick model."""
 
-    def __init__(self, model: str = FAST_MODEL) -> None:
+    def __init__(self, model: str = FAST_MODEL, meter=None) -> None:
         self.model = model
+        self.meter = meter
 
     def answer(self, question: str, pages: list[Page], buffer: list[Turn]) -> str:
         return _chat(
-            self.model, PHRASE_SYSTEM, phrase_user(question, pages, buffer), max_tokens=300
+            self.model, PHRASE_SYSTEM, phrase_user(question, pages, buffer),
+            max_tokens=300, meter=self.meter,
         ).strip()

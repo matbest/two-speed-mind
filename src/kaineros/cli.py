@@ -69,6 +69,12 @@ class Session:
         # concurrency relies on CPython atomics — the worker is the sole store mutator, retrieval
         # reads atomic snapshots (store.pages()), pages are replaced never mutated in place
         self.background = background
+        from .metering import TokenMeter
+
+        # one meter per brain (spec §33) — a proxy for local compute load. Adapters add to these;
+        # cli wires them into the models. Fakes never touch them, so they read zero.
+        self.deep_meter = TokenMeter()
+        self.fast_meter = TokenMeter()
         self.on_compiled = None  # callback fired after each background pass (cockpit repaint)
         self.retry_backoff = 0.5  # base seconds between failed-pass retries (tests shrink it)
         self._wake = threading.Event()
@@ -207,8 +213,9 @@ def _print_cockpit(console, session: Session) -> None:
     console.print(Text(line, style=style), no_wrap=True, overflow="crop")
 
     resp = session.last_response
-    deep = deep_panel(session.compiler.last_report, session.store)
-    fast = fast_panel(resp.trace if resp else None, resp, session.buffer)
+    dm, fm = session.deep_meter, session.fast_meter
+    deep = deep_panel(session.compiler.last_report, session.store, dm.total, dm.last_hour())
+    fast = fast_panel(resp.trace if resp else None, resp, session.buffer, fm.total, fm.last_hour())
     grid = Table.grid(expand=True)
     grid.add_column(ratio=1)
     grid.add_column(ratio=1)
@@ -343,13 +350,10 @@ def main(argv: list[str] | None = None) -> int:
             from .cloud import CloudFastModel, CloudJudge, CloudSlowModel, preflight
 
             preflight()
-            session = Session(
-                judge=CloudJudge(),
-                slow=CloudSlowModel(),
-                fast=CloudFastModel(),
-                store_dir=mind,
-                background=True,
-            )
+            session = Session(store_dir=mind, background=True)
+            session.compiler.judge = CloudJudge(meter=session.deep_meter)
+            session.slow = CloudSlowModel(meter=session.deep_meter)
+            session.runtime.model = CloudFastModel(meter=session.fast_meter)
             session.cloud = True
             session.backend_label = "DEBUG - CLOUD"
             session.backend_detail = "Claude API"
@@ -371,13 +375,10 @@ def main(argv: list[str] | None = None) -> int:
             fast = FREE_FAST_MODEL if "--free" in args else FAST_MODEL
             ensure_key()
             preflight(fast)
-            session = Session(
-                judge=OpenRouterJudge(deep),
-                slow=OpenRouterSlowModel(deep),
-                fast=OpenRouterFastModel(fast),
-                store_dir=mind,
-                background=True,
-            )
+            session = Session(store_dir=mind, background=True)
+            session.compiler.judge = OpenRouterJudge(deep, meter=session.deep_meter)
+            session.slow = OpenRouterSlowModel(deep, meter=session.deep_meter)
+            session.runtime.model = OpenRouterFastModel(fast, meter=session.fast_meter)
             session.cloud = True
             session.backend_label = "DEBUG - CLOUD"
             session.backend_detail = (

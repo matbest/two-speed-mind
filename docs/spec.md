@@ -201,4 +201,12 @@ This prototype proves the *architecture* — with the model faked — as a comma
     result — as an append-only action log on disk beside the wiki. What the assistant *did* is as
     auditable as what it *believes*.
 
+**Watching the cost (would this run locally?)**
+33. Each brain **meters its tokens** — one counter for the deep brain (extractor + judge), one for
+    the fast brain (phraser) — reporting a running **total** and a rolling **last hour**. The
+    panels show both. The number is a proxy for how much compute a *local* model would have to
+    carry for that role, so you can judge, before building the local adapter (T9b), whether the
+    deep brain's appetite is realistic on-device. The fakes never spend tokens, so the counters
+    read zero — metering measures real backends only.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

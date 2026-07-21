@@ -151,11 +151,19 @@ def candidates_from_items(items: list[dict], users: list[Turn]) -> list[Candidat
     return out
 
 
+def _meter(meter, resp) -> None:
+    if meter is not None:
+        u = getattr(resp, "usage", None)
+        if u is not None:
+            meter.add((u.input_tokens or 0) + (u.output_tokens or 0))
+
+
 class CloudJudge:
     """Pairwise verdicts from a strong model — forced-choice, low effort, tiny prompts."""
 
-    def __init__(self, model: str = DEEP_MODEL) -> None:
+    def __init__(self, model: str = DEEP_MODEL, meter=None) -> None:
         self.model = model
+        self.meter = meter
         self.client = _client()
 
     def _verdict(self, field: str, question: str) -> bool:
@@ -169,6 +177,7 @@ class CloudJudge:
             system=JUDGE_SYSTEM,
             messages=[{"role": "user", "content": question}],
         )
+        _meter(self.meter, resp)
         return bool(json.loads(_first_text(resp))[field])
 
     def better(self, gene: str, a: Candidate, b: Candidate) -> bool:
@@ -226,8 +235,9 @@ facts about the user's life and world.
 class CloudSlowModel:
     """Extraction via structured outputs — gene keys and provenance arrive as data, not prose."""
 
-    def __init__(self, model: str = DEEP_MODEL) -> None:
+    def __init__(self, model: str = DEEP_MODEL, meter=None) -> None:
         self.model = model
+        self.meter = meter
         self.client = _client()
 
     def list_models(self) -> list[str]:
@@ -245,6 +255,7 @@ class CloudSlowModel:
             system=EXTRACT_SYSTEM,
             messages=[{"role": "user", "content": f"Conversation turns:\n{numbered}"}],
         )
+        _meter(self.meter, resp)
         items = json.loads(_first_text(resp))["candidates"]
         return candidates_from_items(items, users)
 
@@ -252,8 +263,9 @@ class CloudSlowModel:
 class CloudFastModel:
     """The phraser: a small, fast model that renders retrieved pages into words — nothing more."""
 
-    def __init__(self, model: str = FAST_MODEL) -> None:
+    def __init__(self, model: str = FAST_MODEL, meter=None) -> None:
         self.model = model
+        self.meter = meter
         self.client = _client()
 
     def answer(self, question: str, pages: list[Page], buffer: list[Turn]) -> str:
@@ -263,4 +275,5 @@ class CloudFastModel:
             system=PHRASE_SYSTEM,
             messages=[{"role": "user", "content": phrase_user(question, pages, buffer)}],
         )
+        _meter(self.meter, resp)
         return _first_text(resp).strip()
