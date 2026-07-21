@@ -136,9 +136,13 @@ This prototype proves the *architecture* — with the model faked — as a comma
     use in-memory stores — persistence is explicit, never ambient.
 21. The on-disk layout mirrors the two layers, matching each layer's nature: **`pool.json`** holds
     the working population (every gene's candidates with content, provenance, `wins`, in rank
-    order — it churns each pass, so one file); **`kainome/<gene>.json`** is the wiki — one file
-    per promoted page, named by its (sanitized) gene key, browsable and diffable. What the files
-    say is exactly what `/notebook` and the panels show. Retired pages' files are removed on save.
+    order — it churns each pass, so one file); **`pages.json`** is the clean layer's machine
+    record; and **`kainome/`** is the human wiki *rendered from it on every save* — an
+    **`index.md`** listing every page, plus one **`<gene>.md`** per promoted fact (the content as
+    prose, provenance and promotion history as readable metadata). The wiki is generated:
+    hand-edits are overwritten (reading edits back in as stated candidates is a Later feature).
+    What the files say is exactly what `/notebook` and the panels show; retired pages' files are
+    removed on save.
 22. Saves happen after every consolidation and are **atomic** (write temp, rename) — a crash
     cannot half-write the mind. Files carry a `schema_version`.
 23. Loading is honest, like everything else: a missing home is a fresh mind; a **corrupt file

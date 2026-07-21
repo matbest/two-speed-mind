@@ -79,4 +79,4 @@ def test_repl_smoke(monkeypatch, capsys, tmp_path):
     assert "(buffer cleared" in out                       # /forget
     assert "bye." in out
     assert (tmp_path / "pool.json").exists()              # the mind hit disk (spec §22)
-    assert (tmp_path / "kainome" / "bananas.json").exists()
+    assert (tmp_path / "kainome" / "bananas.md").exists() # and the wiki rendered

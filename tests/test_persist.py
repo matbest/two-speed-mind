@@ -63,33 +63,58 @@ def test_two_sessions_over_one_dir_share_a_mind(tmp_path):
     assert "bananas are yellow" in resp.answer
 
 
-def test_each_page_is_its_own_file_and_retired_files_disappear(tmp_path):
+def test_wiki_has_a_page_per_fact_and_retired_pages_disappear(tmp_path):
     store = Store()
     comp = Compiler(store, FakeJudge(), promote_after=1)
     comp.insert(cand("user.home_city", "the user lives in berlin"))
     comp.insert(cand("user.food.loves", "the user loves mangoes"))
     comp.housekeep()
     save_store(store, tmp_path)
-    assert (tmp_path / "kainome" / "user.home_city.json").exists()
-    assert (tmp_path / "kainome" / "user.food.loves.json").exists()
+    assert (tmp_path / "kainome" / "user.home_city.md").exists()
+    assert (tmp_path / "kainome" / "user.food.loves.md").exists()
 
     del store.clean["user.food.loves"]  # page retired (e.g. by fission)
     save_store(store, tmp_path)
-    assert (tmp_path / "kainome" / "user.home_city.json").exists()
-    assert not (tmp_path / "kainome" / "user.food.loves.json").exists()
+    assert (tmp_path / "kainome" / "user.home_city.md").exists()
+    assert not (tmp_path / "kainome" / "user.food.loves.md").exists()
 
 
-def test_page_files_are_readable_json(tmp_path):
+def test_wiki_pages_are_readable_markdown_with_provenance(tmp_path):
     store = Store()
     comp = Compiler(store, FakeJudge(), promote_after=1)
     comp.insert(cand("user.home_city", "the user lives in berlin"))
     comp.housekeep()
     save_store(store, tmp_path)
-    doc = json.loads((tmp_path / "kainome" / "user.home_city.json").read_text(encoding="utf-8"))
-    assert doc["gene"] == "user.home_city"
-    assert doc["content"] == "the user lives in berlin"
-    assert doc["provenance"]["confidence"] == "high"
+    md = (tmp_path / "kainome" / "user.home_city.md").read_text(encoding="utf-8")
+    assert "# user.home_city" in md
+    assert "the user lives in berlin" in md
+    assert "stated directly" in md and "confidence high" in md
+    assert "promoted:" in md  # the promotion history is on the page
+
+
+def test_wiki_index_lists_every_page(tmp_path):
+    store = Store()
+    comp = Compiler(store, FakeJudge(), promote_after=1)
+    comp.insert(cand("user.home_city", "the user lives in berlin"))
+    comp.insert(cand("user.food.loves", "the user loves mangoes"))
+    comp.housekeep()
+    save_store(store, tmp_path)
+    index = (tmp_path / "kainome" / "index.md").read_text(encoding="utf-8")
+    assert "2 page(s)" in index
+    assert "[user.home_city](user.home_city.md)" in index
+    assert "the user loves mangoes" in index
+
+
+def test_pages_json_is_the_machine_record(tmp_path):
+    store = Store()
+    comp = Compiler(store, FakeJudge(), promote_after=1)
+    comp.insert(cand("user.home_city", "the user lives in berlin"))
+    comp.housekeep()
+    save_store(store, tmp_path)
+    doc = json.loads((tmp_path / "pages.json").read_text(encoding="utf-8"))
     assert doc["schema_version"] == 1
+    assert doc["pages"][0]["gene"] == "user.home_city"
+    assert doc["pages"][0]["provenance"]["confidence"] == "high"
 
 
 def test_corrupt_pool_raises_instead_of_starting_empty(tmp_path):
