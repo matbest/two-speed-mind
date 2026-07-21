@@ -126,4 +126,20 @@ This prototype proves the *architecture* — with the model faked — as a comma
     model's prose. A `--plain` mode keeps the line-based REPL (no panels) for scripts, pipes, and
     the CLI smoke tests.
 
+**Persistence (the mind on disk)**
+20. The mind **persists across restarts** as human-readable JSON. Default home:
+    `%LOCALAPPDATA%\kaineros\mind` (override: `--mind PATH` or `KAINEROS_MIND`). Tests and evals
+    use in-memory stores — persistence is explicit, never ambient.
+21. The on-disk layout mirrors the two layers, matching each layer's nature: **`pool.json`** holds
+    the working population (every gene's candidates with content, provenance, `wins`, in rank
+    order — it churns each pass, so one file); **`kainome/<gene>.json`** is the wiki — one file
+    per promoted page, named by its (sanitized) gene key, browsable and diffable. What the files
+    say is exactly what `/notebook` and the panels show. Retired pages' files are removed on save.
+22. Saves happen after every consolidation and are **atomic** (write temp, rename) — a crash
+    cannot half-write the mind. Files carry a `schema_version`.
+23. Loading is honest, like everything else: a missing home is a fresh mind; a **corrupt file
+    stops startup with a clear message** — the system never silently discards memory; deleting a
+    broken file is the user's decision. `/forget` still clears only the buffer (context, not
+    memory — §17); **`/forget all`** erases the persisted mind, after an explicit confirmation.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

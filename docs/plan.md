@@ -68,6 +68,15 @@ you talk ─► short-term buffer ───────────────�
   `Lookup` trace + what was handed to the fast model: probed terms → hits → floor decisions, pages
   used, buffer fill). Pure functions so the cockpit is testable without a terminal.
 
+- **persist.py** — the mind on disk (spec §20–23), pure serialization, no policy:
+  - `save_store(store, home)` — atomic write of `pool.json` + one `kainome/<gene>.json` per page
+    (stale page files deleted); `schema_version` on every file.
+  - `load_store(home) -> Store` — missing home → fresh store; corrupt file → raise with a clear
+    message (never silently discard memory).
+  - Gene→filename sanitization keeps `[a-z0-9._-]`, replaces the rest with `_`.
+  - `Session(store_dir=...)` loads at start and saves after each consolidation; `store_dir=None`
+    (tests, evals) keeps today's in-memory behaviour.
+
 - **cli.py** — the chat shell. Default is the **cockpit** (spec §18): `rich` panels redrawn after
   each turn — deep brain top-left, fast brain top-right, conversation below, `input()` at the
   bottom; the panels just print `view.py` output. `--plain` drops the panels for a line-based REPL

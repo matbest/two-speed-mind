@@ -131,6 +131,18 @@ dependency. Same Protocols; nothing else changes. `/model`'s local list comes fr
 (`/api/tags`) or a curated `models.toml`. If quality drops vs the cloud run, the delta is the
 model, not the design — that comparison is the point of doing cloud first.
 
+## Slice 6 — the mind persists  ·  `tests/test_persist.py` (you add)
+
+**T10. Persistence.** Spec §20–23. Add `kaineros/persist.py`: `save_store` / `load_store` per
+`docs/plan.md`. `Session(store_dir=...)` loads on start, saves after every consolidation
+(atomic temp+rename). CLI: default home `%LOCALAPPDATA%\kaineros\mind`, `--mind PATH` /
+`KAINEROS_MIND` override; `/forget all` erases the persisted mind after an explicit "yes".
+Tests to write: a store round-trips exactly (pool order, `wins`, provenance, pages,
+`rank_history`); two Sessions over one dir share a mind (facts said to the first are served by
+the second); each promoted page is its own `kainome/<gene>.json` and a retired page's file
+disappears on the next save; a corrupt `pool.json` raises with a clear message rather than
+starting empty; `store_dir=None` touches no disk (the whole existing suite is the proof).
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'
