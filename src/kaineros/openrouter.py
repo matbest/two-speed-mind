@@ -133,14 +133,37 @@ def _chat(model: str, system: str, user: str, schema: dict | None = None, max_to
 
 
 def _json(content: str) -> dict:
-    """Tolerant parse — some routed models wrap the JSON in prose or code fences."""
+    """Tolerant parse — free-tier models wrap the JSON in prose, fences, or reasoning text.
+
+    Strategy: plain parse; then any fenced block; then scan every '{' with raw_decode (which
+    tolerates trailing text) and take the first valid non-empty object.
+    """
     try:
-        return json.loads(content)
+        obj = json.loads(content)
+        if isinstance(obj, dict):
+            return obj
     except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", content, re.DOTALL)
-        if m is None:
-            raise
-        return json.loads(m.group(0))
+        pass
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
+    if fence:
+        try:
+            return json.loads(fence.group(1))
+        except json.JSONDecodeError:
+            pass
+    decoder = json.JSONDecoder()
+    fallback: dict | None = None
+    for m in re.finditer(r"\{", content):
+        try:
+            obj, _ = decoder.raw_decode(content, m.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            if obj:
+                return obj
+            fallback = obj  # an empty {} — keep looking for a real one
+    if fallback is not None:
+        return fallback
+    raise ValueError(f"no JSON object in model output: {content[:200]!r}")
 
 
 def preflight(model: str = FAST_MODEL) -> None:
@@ -165,7 +188,8 @@ class OpenRouterJudge:
 
     def _verdict(self, field: str, question: str) -> bool:
         content = _chat(self.model, JUDGE_SYSTEM, question, schema=_bool_schema(field))
-        return bool(_json(content)[field])
+        # missing field -> conservative False (incumbent defends / not-same); never crash the pass
+        return bool(_json(content).get(field, False))
 
     def better(self, gene: str, a: Candidate, b: Candidate) -> bool:
         return self._verdict("a_is_better", better_prompt(gene, a, b))
@@ -198,7 +222,7 @@ class OpenRouterSlowModel:
             schema=EXTRACT_SCHEMA,
             max_tokens=4096,
         )
-        return candidates_from_items(_json(content)["candidates"], users)
+        return candidates_from_items(_json(content).get("candidates", []), users)
 
 
 class OpenRouterFastModel:
