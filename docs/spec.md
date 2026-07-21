@@ -209,4 +209,14 @@ This prototype proves the *architecture* — with the model faked — as a comma
     deep brain's appetite is realistic on-device. The fakes never spend tokens, so the counters
     read zero — metering measures real backends only.
 
+**Profiles (many people, many minds)**
+34. The mind is **per-profile**. A profile is a named home —
+    `%LOCALAPPDATA%\kaineros\profiles\<name>\mind\` — holding that person's pool, pages, wiki, and
+    actions, fully isolated from every other profile. `--profile <name>` launches into one;
+    `/profile` lists them and `/profile <name>` **switches live** (between turns): flush any
+    in-flight compilation into the current mind, save, load the other, start a fresh conversation.
+    Each profile is its own wiki; switching swaps the whole mind, not just the buffer. The legacy
+    unnamed mind stays the default so existing data is never orphaned. (A profile may later carry
+    its own model choice; for now models are chosen at launch and shared across a switch.)
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

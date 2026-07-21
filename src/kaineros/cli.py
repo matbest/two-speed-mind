@@ -30,6 +30,7 @@ HELP = (
     "  /notebook  show the kainome (promoted pages - the clean knowledge base)\n"
     "  /why       the grounded reason behind the last answer\n"
     "  /model     show or switch models: /model deep|fast [model-id]  (--cloud only)\n"
+    "  /profile   list profiles, or /profile <name> to switch (each has its own wiki)\n"
     "  /forget    clear the short-term buffer   (/forget all erases the whole mind)\n"
     "  /quit      exit\n"
 )
@@ -65,6 +66,7 @@ class Session:
         self.backend_label = "OFFLINE"
         self.backend_detail = "deterministic fakes"
         self.offdevice = False
+        self.profile_name = "(default)"  # which named mind is loaded (spec §34)
         # background consolidation (spec §24-27): one daemon worker drains the buffer tail;
         # concurrency relies on CPython atomics — the worker is the sole store mutator, retrieval
         # reads atomic snapshots (store.pages()), pages are replaced never mutated in place
@@ -159,6 +161,22 @@ class Session:
     def forget(self) -> None:
         self.buffer.clear()
         self.compiled_upto = 0
+
+    def load_profile(self, mind_dir: str) -> None:
+        """Swap the whole mind to another profile's home (spec §34). Between turns only."""
+        from .persist import load_store
+
+        self.flush(timeout=120)  # let any in-flight compilation finish into the current mind
+        if self.store_dir is not None:
+            from .persist import save_store
+
+            save_store(self.store, self.store_dir)
+        new = load_store(mind_dir)  # corrupt file raises here, loudly — never a silent empty mind
+        self.store = new
+        self.compiler.store = new
+        self.runtime.store = new
+        self.store_dir = mind_dir
+        self.forget()  # a new person, a fresh conversation
 
 
 def _timed(fn, show: bool):
@@ -325,11 +343,19 @@ def main(argv: list[str] | None = None) -> int:
     import os
     from pathlib import Path
 
-    mind = os.environ.get("KAINEROS_MIND") or str(
-        Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "kaineros" / "mind"
-    )
-    if "--mind" in args:
+    from . import profiles
+
+    profile = "(default)"
+    if "--mind" in args:  # explicit path escape hatch (tests, one-offs)
         mind = args[args.index("--mind") + 1]
+        profile = "(custom)"
+    elif "--profile" in args:  # a named profile — its own wiki (spec §34)
+        profile = args[args.index("--profile") + 1]
+        mind = profiles.mind_dir(profile)
+    else:
+        mind = os.environ.get("KAINEROS_MIND") or str(
+            Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "kaineros" / "mind"
+        )
 
     console = None
     vt_ok = False
@@ -397,9 +423,11 @@ def main(argv: list[str] | None = None) -> int:
             # a landed background pass repaints the header in place — the answer didn't wait,
             # the panels catch up (spec §27)
             session.on_compiled = lambda: _paint_header(console, session)
+    session.profile_name = profile
     from .view import status_bar
 
     print(status_bar(session.backend_label, session.backend_detail, session.offdevice))
+    print(f"(profile: {profile})")
     if session.cloud:
         print(f"(models: deep={session.slow.model}, fast={session.runtime.model.model})")
     print(f"(mind: {mind} - {len(session.store.pages())} pages)")
@@ -430,6 +458,22 @@ def main(argv: list[str] | None = None) -> int:
                 print("  " + why)
             elif cmd == "/model":
                 _cmd_model(session, line.split()[1:])
+            elif cmd == "/profile":
+                from . import profiles
+
+                pargs = line.split()[1:]
+                if not pargs:
+                    names = profiles.list_profiles()
+                    print(f"  current: {session.profile_name}")
+                    print("  profiles: " + (", ".join(names) if names else "(none named yet)"))
+                    print("  switch/create: /profile <name>")
+                else:
+                    name = pargs[0]
+                    session.load_profile(profiles.mind_dir(name))
+                    session.profile_name = name
+                    print(f"  switched to '{name}' - {len(session.store.pages())} pages")
+                    if pinned:
+                        _paint_header(console, session)
             elif cmd == "/forget":
                 if line.split()[1:] == ["all"]:
                     sure = input("  really erase the whole mind from disk? type yes: ").strip()
