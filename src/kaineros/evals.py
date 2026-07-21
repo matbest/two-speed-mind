@@ -104,6 +104,10 @@ def run_scenario(
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:  # Windows consoles default to cp1252; model output is unicode
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        pass
     args = argv if argv is not None else sys.argv[1:]
     fakes = "--fakes" in args
     free = "--free" in args
