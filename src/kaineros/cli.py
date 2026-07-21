@@ -31,6 +31,7 @@ HELP = (
     "  /why       the grounded reason behind the last answer\n"
     "  /model     show or switch models: /model deep|fast [model-id]  (--cloud only)\n"
     "  /profile   list profiles, or /profile <name> to switch (each has its own wiki)\n"
+    "  /persona   /persona <name> builds a fresh wiki from a scripted person (watch it grow)\n"
     "  /forget    clear the short-term buffer   (/forget all erases the whole mind)\n"
     "  /quit      exit\n"
 )
@@ -331,6 +332,42 @@ def _cmd_model(session: Session, args: list[str]) -> None:
     print(f"  {role} -> {name}")
 
 
+def _cmd_persona(session: Session, args: list[str], pinned: bool, console) -> None:
+    """/persona <name> — wipe a dedicated profile and rebuild it from a scripted conversation,
+    so you watch a wiki form from nothing. Never touches the user's own profiles."""
+    from . import persona, profiles
+
+    if not args:
+        print("  personas: " + (", ".join(persona.list_personas()) or "(none)"))
+        print("  /persona <name>  - build a fresh wiki (in profile 'persona-<name>')")
+        return
+    name = args[0]
+    try:
+        convo = persona.load(name)
+    except RuntimeError as exc:
+        print(f"  {exc}")
+        return
+    target = f"persona-{name}"
+    session.load_profile(profiles.mind_dir(target))
+    session.profile_name = target
+    session.wipe()  # clean slate — the whole point is to watch it build from nothing
+    turns = convo["turns"]
+    print(f"  building '{name}' fresh in profile '{target}' - {len(turns)} turns, watch it grow")
+    if pinned:
+        _paint_header(console, session)
+    for text in turns:
+        print("you> " + text)
+        resp = session.turn(text)
+        session.flush()  # let the deep brain finish this turn before the next (see it build)
+        if pinned:
+            _paint_header(console, session)
+        print("mind> " + resp.answer)
+    print(
+        f"  done - {len(session.store.pages())} pages "
+        f"(deep {session.deep_meter.total:,} tok). /notebook to read, /profile default to leave"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     if args and args[0] == "evals":  # `kaineros evals [--free|--openrouter|--fakes|--only X]`
@@ -463,6 +500,8 @@ def main(argv: list[str] | None = None) -> int:
                 print("  " + why)
             elif cmd == "/model":
                 _cmd_model(session, line.split()[1:])
+            elif cmd == "/persona":
+                _cmd_persona(session, line.split()[1:], pinned, console)
             elif cmd == "/profile":
                 from . import profiles
 
