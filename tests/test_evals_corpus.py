@@ -6,6 +6,18 @@ deliberately not part of pytest.
 from kaineros.evals import load_corpus
 
 
+def test_conflicts_corpus_is_well_formed():
+    from kaineros.evals import corpus_path
+
+    scenarios = load_corpus(corpus_path("conflicts"))
+    names = " ".join(s["name"] for s in scenarios)
+    assert "static" in names and "dynamic" in names and "conditional" in names
+    for s in scenarios:
+        assert len(s["turns"]) >= 3
+        for exp in s["expect"]:
+            assert exp["keywords"] and exp["question"].strip()
+
+
 def test_corpus_parses_and_is_well_formed():
     scenarios = load_corpus()
     assert len(scenarios) >= 5

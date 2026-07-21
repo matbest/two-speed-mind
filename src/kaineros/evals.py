@@ -21,12 +21,17 @@ from pathlib import Path
 from .cli import Session
 from .schema import Turn
 
-CORPUS = Path(__file__).resolve().parents[2] / "evals" / "conversations.toml"
+CORPUS_DIR = Path(__file__).resolve().parents[2] / "evals"
+CORPUS = CORPUS_DIR / "conversations.toml"
 
 
 def load_corpus(path: Path = CORPUS) -> list[dict]:
     with open(path, "rb") as f:
         return tomllib.load(f)["scenario"]
+
+
+def corpus_path(name: str) -> Path:
+    return CORPUS_DIR / f"{name}.toml"
 
 
 def build_session(fakes: bool, openrouter: bool = False, free: bool = False) -> Session:
@@ -115,8 +120,14 @@ def main(argv: list[str] | None = None) -> int:
     only = None
     if "--only" in args:
         only = args[args.index("--only") + 1].lower()
+    path = CORPUS
+    if "--corpus" in args:  # e.g. --corpus conflicts -> evals/conflicts.toml
+        path = corpus_path(args[args.index("--corpus") + 1])
+        if not path.exists():
+            print(f"no corpus at {path}")
+            return 1
 
-    scenarios = load_corpus()
+    scenarios = load_corpus(path)
     if only:
         scenarios = [s for s in scenarios if only in s["name"].lower()]
     if not scenarios:

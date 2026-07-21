@@ -1,0 +1,47 @@
+# The three conflict types from the MemConflict benchmark (arxiv 2605.20926), as Kaineros evals.
+# Run: kaineros evals --corpus conflicts --free   (or --openrouter)
+#
+# These probe the hard part of memory: which of several competing facts is the RIGHT one to serve.
+# Predicted Kaineros behaviour (from research, 2026-07-21):
+#   - static:      structural STRENGTH (recency is a vote not a veto -> incumbent defends)
+#   - dynamic:     handled, but with a displacement lag (the newcomer must win over passes)
+#   - conditional: WEAKNESS until gene keys are condition-aware (else the two collapse to one winner)
+
+[[scenario]]
+name = "static - a stray contradiction must not overwrite a stable fact"
+turns = [
+    "I was born in Boston.",
+    "Boston born and raised - my whole family is from there.",
+    "I still go back to Boston every summer.",
+    "Chicago's a great city, I was practically born there.",
+]
+[[scenario.expect]]
+keywords = ["boston"]
+absent = ["chicago"]
+question = "Where was I born?"
+
+[[scenario]]
+name = "dynamic - a real update should win once it settles"
+turns = [
+    "I live in New York.",
+    "Loving the New York winters - cold but bright.",
+    "Big change: I've moved to San Francisco for a new job.",
+    "Settling into San Francisco now, the weather's a shock after New York.",
+]
+[[scenario.expect]]
+keywords = ["francisco"]
+question = "Which city do I live in now?"
+
+[[scenario]]
+name = "conditional - two preferences, each valid in its own context"
+turns = [
+    "In the morning I always drink coffee.",
+    "In the evening I switch to a glass of milk.",
+    "Coffee first thing every day, without fail.",
+]
+[[scenario.expect]]
+keywords = ["coffee"]
+question = "What do I drink in the morning?"
+[[scenario.expect]]
+keywords = ["milk"]
+question = "What do I drink in the evening?"

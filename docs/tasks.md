@@ -194,6 +194,44 @@ key prefix, e.g. `user.job.*`); **gate by stakes**; or fold conflict/claim detec
 **extractor pass that already runs** instead of a separate sweep. No change yet — noted so the
 token budget isn't quietly blown as wikis grow.
 
+## Research findings — conflict benchmark + Basic Memory (2026-07-21)
+
+Mapped Kaineros against the **MemConflict** benchmark (arxiv 2605.20926) and the "Don't Ask the LLM
+to Track Freshness" paper (2606.01435); studied **Basic Memory** (local-first Markdown wiki) as the
+nearest analog. Scenarios in `evals/conflicts.toml` (`kaineros evals --corpus conflicts`).
+
+**Where Kaineros stands on the three conflict types:**
+- **Static** (a stray contradiction must NOT overwrite a stable fact — everyone else's *worst*
+  category; best benchmarked CRS ≈ 0.25): Kaineros's **structural strength**. "Recency is a vote,
+  not a veto" means the incumbent defends and a single stray mention can't displace a many-pass
+  winner. *Gap:* we win the answer by inertia but emit no **recognition signal** (a CRS-style "an
+  incumbent was challenged and defended" event). Consider logging defended-challenges so the
+  "noticed the contradiction" is explicit, not just implied.
+- **Dynamic** (a real update should win): handled, but with a **displacement lag** — the newcomer
+  must win the pairwise contest over passes while the old page keeps serving. The lag *is* the cost
+  (we deliberately reject the freshness paper's deterministic `max(timestamp)` because not every
+  new utterance is authoritative). Measurable via the eval.
+- **Conditional** (two facts both valid in different contexts — coffee@morning, milk@evening): the
+  **real weakness**. If both land in one gene pool the pairwise judge tries to pick *one* winner,
+  destroying a valid context-scoped fact; and the disambiguation queue may **falsely fire** ("coffee
+  or milk?") on facts that don't actually conflict. **Highest-value fix: condition-aware gene keys**
+  (gene = `claim@condition`, e.g. `user.drink.morning` vs `user.drink.evening`) so the two never
+  compete, and guard `conflicts` from firing when the pages carry different conditions.
+
+**Borrow from Basic Memory (its file ergonomics; keep our selection engine):**
+1. **Hand-edits flow back as candidates** — fixes the read-only wiki (spec §21). Ingest a hand-edit
+   to `<gene>.md` as a new candidate with maximal-authority provenance (`stated`, high confidence,
+   `source: human-edit`) that competes and almost always wins — preserving grounding (it competes,
+   isn't blindly trusted) while ending "your edits get clobbered." Needs a file-watcher + checksum
+   gate (Basic Memory's `file_version`/`db_version` pattern) so consolidation knows a file was
+   touched externally before it overwrites.
+2. **Typed wikilinks between gene files** (`- supersedes [[old-gene]]`, `- relates_to [[x]]`) — turns
+   the kainome into a navigable graph and gives retrieval a cheap graph-traversal mode.
+3. **Frontmatter** carrying provenance/confidence/stakes + a stable `permalink` per gene — makes the
+   wiki self-describing and diff-friendly.
+4. **git-commit the kainome each consolidation pass** — every promotion/demotion becomes a reviewable
+   diff: a free, human-owned audit trail complementing in-fact provenance.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'
