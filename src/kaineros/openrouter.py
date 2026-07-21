@@ -38,9 +38,10 @@ from .schema import Candidate, Page, Turn
 API = "https://openrouter.ai/api/v1"
 DEEP_MODEL = os.environ.get("OPENROUTER_DEEP_MODEL", "anthropic/claude-opus-4.8")
 FAST_MODEL = os.environ.get("OPENROUTER_FAST_MODEL", "anthropic/claude-haiku-4.5")
-# --free tier for development: zero token spend, at some quality/rate-limit cost
-FREE_DEEP_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
-FREE_FAST_MODEL = "nvidia/nemotron-3-nano-30b-a3b:free"
+# --free tier for development: zero token spend, at some quality/rate-limit cost.
+# Free providers saturate; override without code changes when one is having a bad day.
+FREE_DEEP_MODEL = os.environ.get("KAINEROS_FREE_DEEP", "nvidia/nemotron-3-super-120b-a12b:free")
+FREE_FAST_MODEL = os.environ.get("KAINEROS_FREE_FAST", "nvidia/nemotron-3-nano-30b-a3b:free")
 _KEY_FILE = Path(__file__).resolve().parents[2] / ".openrouter_key"
 
 
@@ -94,7 +95,8 @@ def _request(path: str, body: dict | None = None) -> dict:
             raise RuntimeError(f"openrouter {exc.code}: {detail}") from exc
         if isinstance(data, dict) and data.get("error"):
             code = data["error"].get("code") if isinstance(data["error"], dict) else None
-            if code == 429 and backoff is not None:
+            # OpenRouter reports upstream throttling/saturation in the body, not the HTTP status
+            if code in (429, 500, 502, 503) and backoff is not None:
                 time.sleep(backoff)
                 continue
             raise RuntimeError(f"openrouter error: {data['error']}")
