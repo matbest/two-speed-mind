@@ -18,6 +18,21 @@ class Judge(Protocol):
         """
         ...
 
+    def same_claim(self, gene: str, a: Candidate, b: Candidate) -> bool:
+        """The fission/fusion primitive (spec §9–10): are `a` and `b` rival accounts of ONE claim?
+
+        "Lives in London" vs "lives in Berlin" → True (rivals). "Likes bananas" vs "allergic to
+        bananas" → False (same topic, different claims). Pairwise and boolean, like all judging.
+        """
+        ...
+
+    def same_account(self, gene: str, a: Candidate, b: Candidate) -> bool:
+        """The dedup primitive (spec §11), one grain finer: do `a` and `b` assert the SAME thing?
+
+        Restatements merge in housekeeping's cleanup rather than competing as rivals.
+        """
+        ...
+
 
 class SlowModel(Protocol):
     def extract(self, turns: list[Turn]) -> list[Candidate]:

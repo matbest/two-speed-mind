@@ -11,13 +11,33 @@ from .schema import Candidate, Page, Provenance, Turn
 
 
 class FakeJudge:
-    """Ranks candidates by a key function. Default: longer content wins. Deterministic."""
+    """Deterministic judge driven by key functions.
 
-    def __init__(self, key: Callable[[Candidate], float] | None = None) -> None:
+    - `key`: ranking (default: longer content wins).
+    - `claim_of`: claim identity for fission/fusion (default: the gene — one gene, one claim, so
+      nothing splits or fuses unless a test says otherwise).
+    - `account_of`: account identity for dedup (default: the exact content — identical restatements
+      merge in cleanup).
+    """
+
+    def __init__(
+        self,
+        key: Callable[[Candidate], float] | None = None,
+        claim_of: Callable[[Candidate], object] | None = None,
+        account_of: Callable[[Candidate], object] | None = None,
+    ) -> None:
         self.key = key or (lambda c: float(len(c.content)))
+        self.claim_of = claim_of or (lambda c: c.gene)
+        self.account_of = account_of or (lambda c: c.content)
 
     def better(self, gene: str, a: Candidate, b: Candidate) -> bool:
         return self.key(a) > self.key(b)
+
+    def same_claim(self, gene: str, a: Candidate, b: Candidate) -> bool:
+        return self.claim_of(a) == self.claim_of(b)
+
+    def same_account(self, gene: str, a: Candidate, b: Candidate) -> bool:
+        return self.account_of(a) == self.account_of(b)
 
 
 class FakeSlowModel:
