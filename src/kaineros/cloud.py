@@ -213,6 +213,8 @@ Rules:
 - `gene` is a short lowercase dotted key naming the SINGLE CLAIM the fact answers, stable across \
 paraphrases: user.home_city, user.job.employer, user.daughter.name, user.pref.address_as. \
 Different claims about one topic get different keys (user.food.loves vs user.food.allergy).
+- The key names the QUESTION, never the answer: user.home_city, not user.home.berlin; \
+user.residence.part_time, not user.residence.milton_keynes. The answer changes; the key must not.
 - `content` is one self-contained sentence, understandable years later without the conversation.
 - `stated`: true if the user said it outright; false if you inferred it.
 - `confidence`: how sure you are the fact is real and correctly read.
