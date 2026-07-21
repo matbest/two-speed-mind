@@ -71,9 +71,13 @@ This prototype proves the *architecture* — with the model faked — as a comma
     (**split-brain**) — is healed by **fusion**: during housekeeping, the compiler checks *promoted
     pages* pairwise with `same_claim`; when two pages state the same claim, their genes merge. The
     older gene key survives, both pools re-insert into it through the normal path (fresh ranks,
-    `wins` reset), both pages retire, and the merged pool re-earns promotion. Checking only pages
-    keeps the cost bounded (the clean layer is small) and targets the failure that matters — both
-    copies being *served*.
+    `wins` reset), and the merged pool re-earns promotion. Checking only pages keeps the cost
+    bounded (the clean layer is small) and targets the failure that matters — both copies being
+    *served*. Fusion is **destructive, so it is cautious**: the verdict is asked both ways round
+    (`same_claim(a,b)` AND `same_claim(b,a)`) so a single noisy judgment cannot trigger it, and
+    the **survivor's page keeps serving** while the merged pool re-earns promotion (§6's rule —
+    the incumbent serves through the contest); only the absorbed page retires. A false fusion
+    therefore narrows the wiki by one page, never empties it.
 11. **Restatement is evidence, not a rival — and dedup is slow work.** Identity has a third,
     finest grain: `same_account(gene, a, b)` — "do A and B assert the same thing?" ("London" vs
     "Berlin" are rival accounts of one claim; "I love bananas" twice is one account, twice).

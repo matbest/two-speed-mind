@@ -152,6 +152,7 @@ def test_duplicate_promoted_pages_fuse_into_the_older_gene():
     assert comp.last_report.fused == 1
     assert "city" not in store.genes()
     assert store.page("city") is None
+    assert store.page("home") is not None  # the survivor keeps serving through the contest
     assert len(store.candidates("home")) == 2  # the accounts now compete in one pool
 
 

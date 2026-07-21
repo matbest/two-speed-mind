@@ -176,9 +176,10 @@ class Compiler:
     def _fusion(self) -> int:
         """Merge genes whose *promoted pages* state one claim (spec §10) — split-brain repair.
 
-        The earlier-promoted gene key survives; both pools re-rank into it (`wins` reset), both
-        pages retire, and the merged pool re-earns promotion. Only pages are compared, which keeps
-        the cost bounded and targets the failure that matters: both copies being served.
+        The earlier-promoted gene key survives; both pools re-rank into it (`wins` reset) and the
+        merged pool re-earns promotion. Destructive, so cautious: the verdict is asked both ways
+        round, and the survivor's page keeps serving through the contest — only the absorbed page
+        retires. A false fusion narrows the wiki by one page, never empties it.
         """
         fused = 0
         while True:
@@ -188,8 +189,7 @@ class Compiler:
             survivor, absorbed = pair
             pool = self.store.pool.setdefault(survivor, [])
             incoming = self.store.pool.pop(absorbed, [])
-            self.store.clean.pop(survivor, None)
-            self.store.clean.pop(absorbed, None)
+            self.store.clean.pop(absorbed, None)  # survivor's page keeps serving (§6's rule)
             for c in pool:
                 c.wins = 0
             for c in incoming:
@@ -205,7 +205,10 @@ class Compiler:
                 p1, p2 = self.store.clean[genes[i]], self.store.clean[genes[j]]
                 a = Candidate(gene=p1.gene, content=p1.content, provenance=p1.provenance)
                 b = Candidate(gene=p2.gene, content=p2.content, provenance=p2.provenance)
-                if self.judge.same_claim(genes[i], a, b):
+                # asked both ways round: fusion is destructive, one noisy verdict must not fire it
+                if self.judge.same_claim(genes[i], a, b) and self.judge.same_claim(
+                    genes[j], b, a
+                ):
                     return genes[i], genes[j]
         return None
 
