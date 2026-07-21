@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kaineus"
+name = "kaineros"
 version = "0.0.1"
 description = "A two-speed mind: a slow-deep compiler and a fast reader over a self-selecting knowledge base."
 requires-python = ">=3.11"
@@ -16,10 +16,10 @@ cloud = ["anthropic>=0.60"]
 # local = ["llama-cpp-python>=0.2"]
 
 [project.scripts]
-kaineus = "kaineus.cli:main"
+kaineros = "kaineros.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/kaineus"]
+packages = ["src/kaineros"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

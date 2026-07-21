@@ -6,11 +6,11 @@ normal win path. Spec §4, §6.
 """
 import time
 
-from kaineus.compiler import Compiler
-from kaineus.fakes import FakeFastModel, FakeJudge
-from kaineus.runtime import HEDGE_PREFIX, Runtime
-from kaineus.schema import Candidate, Page, Provenance
-from kaineus.store import Store
+from kaineros.compiler import Compiler
+from kaineros.fakes import FakeFastModel, FakeJudge
+from kaineros.runtime import HEDGE_PREFIX, Runtime
+from kaineros.schema import Candidate, Page, Provenance
+from kaineros.store import Store
 
 
 class CountingJudge(FakeJudge):

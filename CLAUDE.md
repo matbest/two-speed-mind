@@ -4,7 +4,7 @@ Context for Claude Code sessions in this repo.
 
 ## What this is
 
-**Kaineus** — an assistant that compiles experience into its **kainome** (its evolving knowledge
+**Kaineros** — an assistant that compiles experience into its **kainome** (its evolving knowledge
 genome). A prototype of the **Two-Speed Mind** (see `docs/plan.md`, which distils White Paper 1). Two models
 at two speeds over one knowledge base:
 
@@ -13,7 +13,7 @@ at two speeds over one knowledge base:
 - **Fast runtime** — answers the user by *retrieving* from the clean base, not by reasoning from
   scratch. Abstains when it has nothing good.
 
-Delivered as a CLI chat app (`kaineus`) with slash commands.
+Delivered as a CLI chat app (`kaineros`) with slash commands.
 
 ## How to work here (important)
 
@@ -22,8 +22,8 @@ This project is **test-first**. The tests in `tests/` are the spec.
 - Work through `docs/tasks.md` in order. Each task names the tests it must turn green.
 - `pytest` is the loop: run it, implement until green, repeat. Do not weaken a test to pass it —
   fix the code, or raise the mismatch with the user.
-- The slow/fast models are **interfaces** (`kaineus/interfaces.py`). Build and test everything
-  against the **deterministic fakes** in `kaineus/fakes.py`. A real local model (llama.cpp / HF) is the
+- The slow/fast models are **interfaces** (`kaineros/interfaces.py`). Build and test everything
+  against the **deterministic fakes** in `kaineros/fakes.py`. A real local model (llama.cpp / HF) is the
   *last* task, added as an adapter — never a dependency of the core logic or the tests.
 
 ## The one principle that must not be violated
@@ -36,7 +36,7 @@ phrases the answer; it does not decide what is true. `Runtime.respond` returns b
 ## Structure
 
 ```
-src/kaineus/
+src/kaineros/
   schema.py       Turn, Provenance, Candidate, Page, Response  (the data model — the "schema" the paper calls the next artifact)
   interfaces.py   Judge, SlowModel, FastModel  (Protocols; the model boundary)
   store.py        Store — the gene pool (competing candidates) + the clean layer (promoted pages)
@@ -52,7 +52,7 @@ docs/             spec.md, plan.md, tasks.md
 
 - `pip install -e ".[dev]"` — install (editable) with pytest.
 - `pytest` — run the suite. `pytest -k store` to scope.
-- `kaineus` (or `python -m kaineus`) — run the chat shell.
+- `kaineros` (or `python -m kaineros`) — run the chat shell.
 
 ## Vocabulary (from the paper, kept in the code)
 

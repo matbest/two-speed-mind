@@ -2,9 +2,9 @@
 
 Drives scripted transcripts through Session (the REPL's engine) and through main() itself.
 """
-from kaineus.cli import Session, main
-from kaineus.fakes import FakeSlowModel
-from kaineus.schema import Candidate, Turn
+from kaineros.cli import Session, main
+from kaineros.fakes import FakeSlowModel
+from kaineros.schema import Candidate, Turn
 
 
 class CountingSlowModel(FakeSlowModel):

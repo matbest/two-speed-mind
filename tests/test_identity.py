@@ -4,10 +4,10 @@ A gene means one claim; its candidates are distinct accounts. The slow brain mai
 partition in housekeeping: restatements merge, crowded mixed pools split, duplicate promoted
 pages fuse. Spec §7-§11.
 """
-from kaineus.compiler import Compiler
-from kaineus.fakes import FakeJudge
-from kaineus.schema import Candidate, Provenance
-from kaineus.store import Store
+from kaineros.compiler import Compiler
+from kaineros.fakes import FakeJudge
+from kaineros.schema import Candidate, Provenance
+from kaineros.store import Store
 
 
 def cand(gene: str, content: str, score: float = 0.0, turn: str = "") -> Candidate:

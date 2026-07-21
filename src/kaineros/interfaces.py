@@ -1,7 +1,7 @@
 """The model boundary.
 
 The core depends on these Protocols, never on a concrete model. Tests and the CLI run against the
-deterministic fakes in `kaineus.fakes`; a real local model (Slice 5) implements the same Protocols.
+deterministic fakes in `kaineros.fakes`; a real local model (Slice 5) implements the same Protocols.
 """
 from __future__ import annotations
 

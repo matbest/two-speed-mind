@@ -5,9 +5,9 @@ scenario, that the expected knowledge (a) got promoted into the clean layer and 
 when probed with a question. Grading is graded, not exact — real models phrase freely.
 
 Usage:
-    python -m kaineus.evals            # cloud models (spends tokens; needs the [cloud] extra)
-    python -m kaineus.evals --fakes    # free smoke run on the fakes (expect failures)
-    python -m kaineus.evals --only berlin   # scenarios whose name contains "berlin"
+    python -m kaineros.evals            # cloud models (spends tokens; needs the [cloud] extra)
+    python -m kaineros.evals --fakes    # free smoke run on the fakes (expect failures)
+    python -m kaineros.evals --only berlin   # scenarios whose name contains "berlin"
 
 Not part of pytest — pytest stays free and deterministic on the fakes.
 """

@@ -81,7 +81,7 @@ you talk ─► short-term buffer ───────────────�
 
 ## Testing strategy
 
-Everything is tested against **deterministic fakes** (`kaineus/fakes.py`):
+Everything is tested against **deterministic fakes** (`kaineros/fakes.py`):
 - `FakeJudge(key)` — `better = key(a) > key(b)`, so ranking is predictable in tests.
 - `FakeFastModel` — returns a fixed template from the pages (so we can assert the *why* is grounded
   independently of the words).

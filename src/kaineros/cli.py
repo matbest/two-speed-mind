@@ -1,6 +1,6 @@
 """The two-speed chat shell.
 
-Run with ``kaineus`` or ``python -m kaineus``. Plain text is a conversation turn; lines starting
+Run with ``kaineros`` or ``python -m kaineros``. Plain text is a conversation turn; lines starting
 with ``/`` are slash commands. Wired with the deterministic fakes for now — swap in a cloud/local
 model (Slice 5) without touching this file.
 
@@ -20,7 +20,7 @@ from .schema import Page, Response, Turn
 from .store import Store
 
 BANNER = (
-    "kaineus - a two-speed mind that compiles experience into its kainome.\n"
+    "kaineros - a two-speed mind that compiles experience into its kainome.\n"
     "Type to chat. Slash commands: /help  /notebook  /why  /model  /forget  /quit\n"
 )
 

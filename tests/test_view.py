@@ -1,10 +1,10 @@
 """Slice 3 — cockpit renderers (docs/tasks.md T7.5). Pure functions, no terminal needed."""
-from kaineus.compiler import Compiler
-from kaineus.fakes import FakeFastModel, FakeJudge
-from kaineus.runtime import Runtime
-from kaineus.schema import Candidate, Page, Provenance
-from kaineus.store import Store
-from kaineus.view import deep_panel, fast_panel
+from kaineros.compiler import Compiler
+from kaineros.fakes import FakeFastModel, FakeJudge
+from kaineros.runtime import Runtime
+from kaineros.schema import Candidate, Page, Provenance
+from kaineros.store import Store
+from kaineros.view import deep_panel, fast_panel
 
 
 def cand(gene: str, content: str, score: float = 0.0) -> Candidate:

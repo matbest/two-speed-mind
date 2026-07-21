@@ -2,10 +2,10 @@
 
 RED until Runtime.respond is implemented.
 """
-from kaineus.fakes import FakeFastModel
-from kaineus.runtime import Runtime
-from kaineus.schema import Page, Provenance
-from kaineus.store import Store
+from kaineros.fakes import FakeFastModel
+from kaineros.runtime import Runtime
+from kaineros.schema import Page, Provenance
+from kaineros.store import Store
 
 
 def make_runtime(floor: str = "low"):
