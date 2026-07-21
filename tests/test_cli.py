@@ -55,7 +55,7 @@ def test_forget_resets_buffer_and_marker():
     assert s.compiled_upto == 0
 
 
-def test_repl_smoke(monkeypatch, capsys):
+def test_repl_smoke(monkeypatch, capsys, tmp_path):
     lines = iter([
         "bananas are yellow",
         "moon orbits earth",
@@ -68,11 +68,13 @@ def test_repl_smoke(monkeypatch, capsys):
     ])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
 
-    assert main(["--plain"]) == 0
+    assert main(["--plain", "--mind", str(tmp_path)]) == 0
 
     out = capsys.readouterr().out
     assert "From what I know: bananas are yellow" in out  # the answer
     assert "[bananas] bananas are yellow" in out          # /notebook shows the promoted page
     assert "page 'bananas'" in out                        # /why is grounded in state
-    assert "(buffer cleared)" in out                      # /forget
+    assert "(buffer cleared" in out                       # /forget
     assert "bye." in out
+    assert (tmp_path / "pool.json").exists()              # the mind hit disk (spec §22)
+    assert (tmp_path / "kainome" / "bananas.json").exists()

@@ -29,7 +29,7 @@ HELP = (
     "  /notebook  show the kainome (promoted pages - the clean knowledge base)\n"
     "  /why       the grounded reason behind the last answer\n"
     "  /model     show or switch models: /model deep|fast [model-id]  (--cloud only)\n"
-    "  /forget    clear the short-term buffer\n"
+    "  /forget    clear the short-term buffer   (/forget all erases the whole mind)\n"
     "  /quit      exit\n"
 )
 
@@ -43,7 +43,13 @@ class Session:
         judge: Judge | None = None,
         slow: SlowModel | None = None,
         fast: FastModel | None = None,
+        store_dir: str | None = None,
     ) -> None:
+        self.store_dir = store_dir
+        if store is None and store_dir is not None:
+            from .persist import load_store
+
+            store = load_store(store_dir)  # spec §23: corrupt files raise here, loudly
         self.store = store or Store()
         self.slow = slow or FakeSlowModel()
         self.compiler = Compiler(self.store, judge or FakeJudge())
@@ -67,7 +73,21 @@ class Session:
             self.compiler.insert(cand)
         promoted = self.compiler.housekeep()
         self.compiler.last_report.backlog = self.backlog()
+        if self.store_dir is not None:
+            from .persist import save_store
+
+            save_store(self.store, self.store_dir)  # spec §22: the mind hits disk every pass
         return promoted
+
+    def wipe(self) -> None:
+        """Erase the whole mind — buffer, store, and (if persisted) the files on disk."""
+        self.store.pool.clear()
+        self.store.clean.clear()
+        self.forget()
+        if self.store_dir is not None:
+            from .persist import erase
+
+            erase(self.store_dir)
 
     def turn(self, text: str) -> Response:
         self.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
@@ -180,6 +200,16 @@ def main(argv: list[str] | None = None) -> int:
         return evals_main(args[1:])
     plain = "--plain" in args or not sys.stdout.isatty()
 
+    # the mind's home on disk (spec §20): default under LOCALAPPDATA, --mind / env override
+    import os
+    from pathlib import Path
+
+    mind = os.environ.get("KAINEROS_MIND") or str(
+        Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "kaineros" / "mind"
+    )
+    if "--mind" in args:
+        mind = args[args.index("--mind") + 1]
+
     console = None
     if not plain:
         try:
@@ -189,18 +219,16 @@ def main(argv: list[str] | None = None) -> int:
         except ImportError:
             print("(rich not installed - running plain; pip install rich for the cockpit)")
 
-    if "--cloud" in args:
-        try:
+    try:
+        if "--cloud" in args:
             from .cloud import CloudFastModel, CloudJudge, CloudSlowModel, preflight
 
             preflight()
-            session = Session(judge=CloudJudge(), slow=CloudSlowModel(), fast=CloudFastModel())
+            session = Session(
+                judge=CloudJudge(), slow=CloudSlowModel(), fast=CloudFastModel(), store_dir=mind
+            )
             session.cloud = True
-        except RuntimeError as exc:
-            print(f"error: {exc}")
-            return 1
-    elif "--openrouter" in args or "--free" in args:
-        try:
+        elif "--openrouter" in args or "--free" in args:
             from .openrouter import (
                 DEEP_MODEL,
                 FAST_MODEL,
@@ -221,15 +249,17 @@ def main(argv: list[str] | None = None) -> int:
                 judge=OpenRouterJudge(deep),
                 slow=OpenRouterSlowModel(deep),
                 fast=OpenRouterFastModel(fast),
+                store_dir=mind,
             )
             session.cloud = True
-        except RuntimeError as exc:
-            print(f"error: {exc}")
-            return 1
-    else:
-        session = Session()
+        else:
+            session = Session(store_dir=mind)
+    except RuntimeError as exc:
+        print(f"error: {exc}")
+        return 1
     if session.cloud:
         print(f"(models: deep={session.slow.model}, fast={session.runtime.model.model})")
+    print(f"(mind: {mind} - {len(session.store.pages())} pages)")
     print(BANNER)
     while True:
         try:
@@ -258,8 +288,16 @@ def main(argv: list[str] | None = None) -> int:
             elif cmd == "/model":
                 _cmd_model(session, line.split()[1:])
             elif cmd == "/forget":
-                session.forget()
-                print("  (buffer cleared)")
+                if line.split()[1:] == ["all"]:
+                    sure = input("  really erase the whole mind from disk? type yes: ").strip()
+                    if sure.lower() == "yes":
+                        session.wipe()
+                        print("  (the mind is erased)")
+                    else:
+                        print("  (unchanged)")
+                else:
+                    session.forget()
+                    print("  (buffer cleared - /forget all erases the whole mind)")
             else:
                 print(f"  unknown command: {cmd}  (try /help)")
             continue
