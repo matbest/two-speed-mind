@@ -15,8 +15,19 @@ from .schema import Lookup, LookupHit, Page, Response, Turn
 from .store import Store
 
 
+_SUFFIXES = ("ing", "ed", "ies", "es", "s", "y", "ic")
+
+
+def _stem(token: str) -> str:
+    """Crude suffix-stripping so 'loves'/'love', 'called'/'call', 'allergy'/'allergic' meet."""
+    for suffix in _SUFFIXES:
+        if token.endswith(suffix) and len(token) - len(suffix) >= 3:
+            return token[: -len(suffix)]
+    return token
+
+
 def _tokens(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
+    return {_stem(t) for t in re.findall(r"[a-z0-9]+", text.lower())}
 
 CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
 HEDGE_PREFIX = "If I remember rightly: "

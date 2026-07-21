@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -37,6 +38,9 @@ from .schema import Candidate, Page, Turn
 API = "https://openrouter.ai/api/v1"
 DEEP_MODEL = os.environ.get("OPENROUTER_DEEP_MODEL", "anthropic/claude-opus-4.8")
 FAST_MODEL = os.environ.get("OPENROUTER_FAST_MODEL", "anthropic/claude-haiku-4.5")
+# --free tier for development: zero token spend, at some quality/rate-limit cost
+FREE_DEEP_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+FREE_FAST_MODEL = "nvidia/nemotron-3-nano-30b-a3b:free"
 _KEY_FILE = Path(__file__).resolve().parents[2] / ".openrouter_key"
 
 
@@ -73,20 +77,29 @@ def ensure_key() -> None:
 
 
 def _request(path: str, body: dict | None = None) -> dict:
-    req = urllib.request.Request(
-        API + path,
-        data=json.dumps(body).encode() if body is not None else None,
-        headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=180) as r:
-            data = json.load(r)
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")[:300]
-        raise RuntimeError(f"openrouter {exc.code}: {detail}") from exc
-    if isinstance(data, dict) and data.get("error"):
-        raise RuntimeError(f"openrouter error: {data['error']}")
-    return data
+    for attempt, backoff in enumerate((5, 15, 30, None)):
+        req = urllib.request.Request(
+            API + path,
+            data=json.dumps(body).encode() if body is not None else None,
+            headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                data = json.load(r)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (429, 500, 502, 503) and backoff is not None:
+                time.sleep(backoff)  # free-tier rate limits are the common case here
+                continue
+            detail = exc.read().decode(errors="replace")[:300]
+            raise RuntimeError(f"openrouter {exc.code}: {detail}") from exc
+        if isinstance(data, dict) and data.get("error"):
+            code = data["error"].get("code") if isinstance(data["error"], dict) else None
+            if code == 429 and backoff is not None:
+                time.sleep(backoff)
+                continue
+            raise RuntimeError(f"openrouter error: {data['error']}")
+        return data
+    raise RuntimeError("openrouter: retries exhausted")
 
 
 def _chat(model: str, system: str, user: str, schema: dict | None = None, max_tokens: int = 1024) -> str:
@@ -103,7 +116,19 @@ def _chat(model: str, system: str, user: str, schema: dict | None = None, max_to
             "type": "json_schema",
             "json_schema": {"name": "out", "strict": True, "schema": schema},
         }
-    data = _request("/chat/completions", body)
+    try:
+        data = _request("/chat/completions", body)
+    except RuntimeError:
+        if schema is None:
+            raise
+        # some (mostly free) models reject response_format — fall back to asking for the JSON
+        # in the prompt; the tolerant parser handles fences/prose around it
+        body.pop("response_format", None)
+        body["messages"][1]["content"] += (
+            "\n\nRespond with ONLY a JSON object matching this schema, no other text:\n"
+            + json.dumps(schema)
+        )
+        data = _request("/chat/completions", body)
     return data["choices"][0]["message"].get("content") or ""
 
 
@@ -118,10 +143,10 @@ def _json(content: str) -> dict:
         return json.loads(m.group(0))
 
 
-def preflight() -> None:
+def preflight(model: str = FAST_MODEL) -> None:
     """Fail fast with a clear message — one tiny fast-model call proves key + route."""
     try:
-        _chat(FAST_MODEL, "You reply with the single word: ok", "ping", max_tokens=8)
+        _chat(model, "You reply with the single word: ok", "ping", max_tokens=8)
     except RuntimeError:
         raise
     except Exception as exc:

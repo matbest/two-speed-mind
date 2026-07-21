@@ -161,9 +161,13 @@ def main(argv: list[str] | None = None) -> int:
         except RuntimeError as exc:
             print(f"error: {exc}")
             return 1
-    elif "--openrouter" in args:
+    elif "--openrouter" in args or "--free" in args:
         try:
             from .openrouter import (
+                DEEP_MODEL,
+                FAST_MODEL,
+                FREE_DEEP_MODEL,
+                FREE_FAST_MODEL,
                 OpenRouterFastModel,
                 OpenRouterJudge,
                 OpenRouterSlowModel,
@@ -171,10 +175,14 @@ def main(argv: list[str] | None = None) -> int:
                 preflight,
             )
 
+            deep = FREE_DEEP_MODEL if "--free" in args else DEEP_MODEL
+            fast = FREE_FAST_MODEL if "--free" in args else FAST_MODEL
             ensure_key()
-            preflight()
+            preflight(fast)
             session = Session(
-                judge=OpenRouterJudge(), slow=OpenRouterSlowModel(), fast=OpenRouterFastModel()
+                judge=OpenRouterJudge(deep),
+                slow=OpenRouterSlowModel(deep),
+                fast=OpenRouterFastModel(fast),
             )
             session.cloud = True
         except RuntimeError as exc:

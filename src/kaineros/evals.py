@@ -29,11 +29,15 @@ def load_corpus(path: Path = CORPUS) -> list[dict]:
         return tomllib.load(f)["scenario"]
 
 
-def build_session(fakes: bool, openrouter: bool = False) -> Session:
+def build_session(fakes: bool, openrouter: bool = False, free: bool = False) -> Session:
     if fakes:
         return Session()
-    if openrouter:
+    if openrouter or free:
         from .openrouter import (
+            DEEP_MODEL,
+            FAST_MODEL,
+            FREE_DEEP_MODEL,
+            FREE_FAST_MODEL,
             OpenRouterFastModel,
             OpenRouterJudge,
             OpenRouterSlowModel,
@@ -41,10 +45,14 @@ def build_session(fakes: bool, openrouter: bool = False) -> Session:
             preflight,
         )
 
+        deep = FREE_DEEP_MODEL if free else DEEP_MODEL
+        fast = FREE_FAST_MODEL if free else FAST_MODEL
         ensure_key()
-        preflight()
+        preflight(fast)
         session = Session(
-            judge=OpenRouterJudge(), slow=OpenRouterSlowModel(), fast=OpenRouterFastModel()
+            judge=OpenRouterJudge(deep),
+            slow=OpenRouterSlowModel(deep),
+            fast=OpenRouterFastModel(fast),
         )
     else:
         from .cloud import CloudFastModel, CloudJudge, CloudSlowModel, preflight
@@ -56,10 +64,10 @@ def build_session(fakes: bool, openrouter: bool = False) -> Session:
 
 
 def run_scenario(
-    scenario: dict, fakes: bool, openrouter: bool = False
+    scenario: dict, fakes: bool, openrouter: bool = False, free: bool = False
 ) -> list[tuple[str, bool, str]]:
     """Returns one (label, passed, detail) per expectation."""
-    session = build_session(fakes, openrouter)
+    session = build_session(fakes, openrouter, free)
     for text in scenario["turns"]:
         session.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
         session.consolidate()
@@ -81,7 +89,9 @@ def run_scenario(
         )
         if "question" in exp:
             absent = [a.lower() for a in exp.get("absent", [])]
-            resp = session.runtime.respond(exp["question"], session.buffer)
+            # probe with an EMPTY buffer: this tests what the mind REMEMBERS (a fresh session
+            # tomorrow), not what still sits in short-term conversational context
+            resp = session.runtime.respond(exp["question"], [])
             answered = (
                 (not resp.abstained)
                 and all(k in resp.answer.lower() for k in kws)
@@ -96,7 +106,8 @@ def run_scenario(
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     fakes = "--fakes" in args
-    openrouter = "--openrouter" in args
+    free = "--free" in args
+    openrouter = "--openrouter" in args or free
     only = None
     if "--only" in args:
         only = args[args.index("--only") + 1].lower()
@@ -110,17 +121,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if not fakes:
         try:
-            build_session(fakes=False, openrouter=openrouter)
+            build_session(fakes=False, openrouter=openrouter, free=free)
         except RuntimeError as exc:
             print(f"error: {exc}")
             return 1
 
-    backend = "fakes" if fakes else ("openrouter" if openrouter else "cloud models")
+    backend = (
+        "fakes" if fakes
+        else ("openrouter (free tier)" if free else ("openrouter" if openrouter else "cloud models"))
+    )
     print(f"running {len(scenarios)} scenario(s) on {backend}\n")
     passed = failed = 0
     for scenario in scenarios:
         print(f"== {scenario['name']}")
-        for label, ok, detail in run_scenario(scenario, fakes, openrouter):
+        for label, ok, detail in run_scenario(scenario, fakes, openrouter, free):
             mark = "PASS" if ok else "FAIL"
             passed += ok
             failed += not ok
