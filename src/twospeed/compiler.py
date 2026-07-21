@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 
 from .interfaces import Judge
-from .schema import Candidate, Page
+from .schema import Candidate, CompileReport, Page
 from .store import Store
 
 
@@ -19,6 +19,8 @@ class Compiler:
         self.store = store
         self.judge = judge
         self.promote_after = promote_after
+        self.last_report = CompileReport()  # the deep brain's receipt (spec §19)
+        self._inserted_since_pass = 0
 
     def insert(self, candidate: Candidate) -> None:
         """Place `candidate` into ``store.pool[candidate.gene]``, keeping the list best-first
@@ -39,6 +41,7 @@ class Compiler:
             else:
                 lo = mid + 1
         pool.insert(lo, candidate)
+        self._inserted_since_pass += 1
 
     def housekeep(self) -> list[Page]:
         """One maintenance pass. For each gene, the top candidate accrues a 'win'; once it has held
@@ -66,4 +69,9 @@ class Compiler:
                 )
                 self.store.clean[gene] = new_page
                 promoted.append(new_page)
+        self.last_report = CompileReport(
+            inserted=self._inserted_since_pass,
+            promoted=len(promoted),
+        )
+        self._inserted_since_pass = 0
         return promoted

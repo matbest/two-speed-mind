@@ -58,9 +58,43 @@ class Page:
 
 
 @dataclass
+class LookupHit:
+    """One page examined during retrieval — real state, recorded as it happened."""
+    gene: str
+    strength: int                       # matched query terms (0 = no match)
+    confidence: Confidence              # the page's provenance confidence
+    decision: str                       # "admitted" | "blocked" | "no match"
+
+
+@dataclass
+class Lookup:
+    """One retrieval's machine-readable record (spec §14) — the fast brain's receipt.
+
+    The `why` prose and the cockpit's fast-brain panel both render from this; nothing about
+    retrieval is reconstructed after the fact or phrased by the model.
+    """
+    query_terms: tuple[str, ...] = ()
+    hits: list = field(default_factory=list)  # list[LookupHit], every page examined
+    floor: str = "low"
+    abstained: bool = False
+
+
+@dataclass
+class CompileReport:
+    """One housekeeping pass's tally (spec §19) — the deep brain's receipt."""
+    inserted: int = 0                   # candidates inserted since the previous pass
+    merged: int = 0                     # dedup merges (Slice 4.5)
+    split: int = 0                      # fissions (Slice 4.5)
+    fused: int = 0                      # fusions (Slice 4.5)
+    promoted: int = 0                   # pages promoted this pass
+    backlog: int = 0                    # turns awaiting compilation (set by the session)
+
+
+@dataclass
 class Response:
     """A runtime answer, keeping the two things apart on purpose."""
     answer: str                         # the words — phrased by the fast model
     why: str                            # the grounded reason — read from state, NOT from the model
     used: list = field(default_factory=list)  # list[Page] the answer drew on
     abstained: bool = False
+    trace: Lookup = field(default_factory=Lookup)  # the retrieval record the why renders from

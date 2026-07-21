@@ -50,3 +50,33 @@ def test_confidence_floor_hides_weak_pages():
     put_page(store, "food", "you maybe like apples", confidence="low")
     resp = rt.respond("what food do I like?")
     assert resp.abstained is True                        # low page is below the 'high' floor
+
+
+def test_trace_records_blocked_page_and_why():
+    store, rt = make_runtime(floor="high")
+    put_page(store, "food", "you maybe like apples", confidence="low")
+    resp = rt.respond("what food do I like?")
+    # the trace is the machine-readable record of what the lookup actually did (spec §14)
+    assert resp.trace.floor == "high"
+    assert "food" in resp.trace.query_terms
+    hit = next(h for h in resp.trace.hits if h.gene == "food")
+    assert hit.decision == "blocked"
+    assert hit.confidence == "low"                       # why it was blocked
+    assert hit.strength > 0                              # it *did* match; the floor hid it
+
+
+def test_trace_records_admitted_page():
+    store, rt = make_runtime()
+    put_page(store, "food", "you like apples", confidence="high")
+    resp = rt.respond("what food do I like?")
+    hit = next(h for h in resp.trace.hits if h.gene == "food")
+    assert hit.decision == "admitted"
+    assert resp.trace.abstained is False
+
+
+def test_abstention_leaves_a_trace_too():
+    store, rt = make_runtime()
+    resp = rt.respond("what food do I like?")
+    assert resp.abstained is True
+    assert resp.trace.abstained is True
+    assert "food" in resp.trace.query_terms              # what was probed, even with no pages

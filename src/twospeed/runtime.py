@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 from .interfaces import FastModel
-from .schema import Page, Response, Turn
+from .schema import Lookup, LookupHit, Page, Response, Turn
 from .store import Store
 
 
@@ -41,19 +41,29 @@ class Runtime:
         """
         floor = CONFIDENCE_ORDER[self.confidence_floor]
         terms = _tokens(question)
+        trace = Lookup(query_terms=tuple(sorted(terms)), floor=self.confidence_floor)
         used: list[Page] = []
         for page in self.store.pages():
-            if not terms & _tokens(page.gene + " " + page.content):
-                continue
-            if CONFIDENCE_ORDER[page.provenance.confidence] < floor:
-                continue
-            used.append(page)
+            strength = len(terms & _tokens(page.gene + " " + page.content))
+            confidence = page.provenance.confidence
+            if strength == 0:
+                decision = "no match"
+            elif CONFIDENCE_ORDER[confidence] < floor:
+                decision = "blocked"
+            else:
+                decision = "admitted"
+                used.append(page)
+            trace.hits.append(
+                LookupHit(gene=page.gene, strength=strength, confidence=confidence, decision=decision)
+            )
         if not used:
+            trace.abstained = True
             return Response(
                 answer="I don't know.",
                 why=f"abstained: no page matched above the '{self.confidence_floor}' confidence floor",
                 used=[],
                 abstained=True,
+                trace=trace,
             )
         answer = self.model.answer(question, used, buffer or [])
         why = "; ".join(
@@ -61,4 +71,4 @@ class Runtime:
             f"confidence {p.provenance.confidence})"
             for p in used
         )
-        return Response(answer=answer, why=why, used=used, abstained=False)
+        return Response(answer=answer, why=why, used=used, abstained=False, trace=trace)

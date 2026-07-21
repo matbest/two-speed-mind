@@ -57,3 +57,16 @@ def test_promote_after_threshold():
     page = store.page("food")
     assert page is not None and page.content == "apple"
     assert any(p.gene == "food" for p in promoted)
+
+
+def test_compile_report_matches_the_pass():
+    store, comp = make_compiler(promote_after=1)
+    comp.insert(cand("food", "apple", score=5))
+    comp.insert(cand("moon", "orbits", score=3))
+    comp.housekeep()
+    # the deep brain's receipt (spec §19): numbers match what the pass actually did
+    assert comp.last_report.inserted == 2
+    assert comp.last_report.promoted == 2   # promote_after=1 → both promoted this pass
+    comp.housekeep()
+    assert comp.last_report.inserted == 0   # nothing new since the previous pass
+    assert comp.last_report.promoted == 0   # already promoted; content unchanged

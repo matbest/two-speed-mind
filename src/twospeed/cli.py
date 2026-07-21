@@ -59,7 +59,9 @@ class Session:
         self.compiled_upto = len(self.buffer)
         for cand in self.slow.extract(fresh):
             self.compiler.insert(cand)
-        return self.compiler.housekeep()
+        promoted = self.compiler.housekeep()
+        self.compiler.last_report.backlog = self.backlog()
+        return promoted
 
     def turn(self, text: str) -> Response:
         self.buffer.append(Turn(text=text, speaker="user"))
@@ -73,11 +75,44 @@ class Session:
         self.compiled_upto = 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    # --plain is the line-based REPL below; it becomes the fallback once the
-    # cockpit lands (T7.5) and is what the scripted smoke tests drive.
-    session = Session()
+def _print_cockpit(console, session: Session) -> None:
+    """The two panels (spec §18): deep brain top-left, fast brain top-right."""
+    from rich.columns import Columns
+    from rich.panel import Panel
 
+    from .view import deep_panel, fast_panel
+
+    resp = session.last_response
+    deep = deep_panel(
+        session.compiler.last_report, session.store, session.compiler.promote_after
+    )
+    fast = fast_panel(resp.trace if resp else None, resp, session.buffer)
+    console.print(
+        Columns(
+            [
+                Panel(deep, title="deep brain - slow, off the clock"),
+                Panel(fast, title="fast brain - this turn"),
+            ],
+            equal=True,
+            expand=True,
+        )
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = argv if argv is not None else sys.argv[1:]
+    plain = "--plain" in args or not sys.stdout.isatty()
+
+    console = None
+    if not plain:
+        try:
+            from rich.console import Console
+
+            console = Console()
+        except ImportError:
+            print("(rich not installed - running plain; pip install rich for the cockpit)")
+
+    session = Session()
     print(BANNER)
     while True:
         try:
@@ -111,6 +146,8 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         resp = session.turn(line)
+        if console is not None:
+            _print_cockpit(console, session)
         print("mind> " + resp.answer)
 
     print("bye.")
