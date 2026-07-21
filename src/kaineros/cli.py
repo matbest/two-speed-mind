@@ -60,6 +60,11 @@ class Session:
         self.compiled_upto = 0  # spec §17: turns before this index have been extracted
         self.last_response: Response | None = None
         self.cloud = False  # set by main() when wired with the cloud adapters
+        # the posture the status bar reports (spec §27): default is the offline fakes — nothing
+        # runs and nothing leaves the device. main() overrides for real backends.
+        self.backend_label = "OFFLINE"
+        self.backend_detail = "deterministic fakes"
+        self.offdevice = False
         # background consolidation (spec §24-27): one daemon worker drains the buffer tail;
         # concurrency relies on CPython atomics — the worker is the sole store mutator, retrieval
         # reads atomic snapshots (store.pages()), pages are replaced never mutated in place
@@ -183,15 +188,23 @@ def _timed(fn, show: bool):
     return outcome["value"]
 
 
-HEADER_HEIGHT = 9  # rows the pinned panels occupy at the top of the screen
+PANEL_HEIGHT = 9              # the two brain boxes
+BAR_HEIGHT = 1               # the posture strip above them
+HEADER_HEIGHT = BAR_HEIGHT + PANEL_HEIGHT  # rows the pinned header occupies
 
 
 def _print_cockpit(console, session: Session) -> None:
-    """The two panels (spec §18): deep brain LEFT, fast brain RIGHT — fixed height, side by side."""
+    """The pinned header: posture bar on top, then deep brain LEFT / fast brain RIGHT."""
     from rich.panel import Panel
     from rich.table import Table
+    from rich.text import Text
 
-    from .view import deep_panel, fast_panel
+    from .view import deep_panel, fast_panel, status_bar
+
+    bar = status_bar(session.backend_label, session.backend_detail, session.offdevice)
+    style = "bold white on red" if session.offdevice else "bold white on green4"
+    line = bar[: console.width].ljust(console.width)  # exactly one full-width row
+    console.print(Text(line, style=style), no_wrap=True, overflow="crop")
 
     resp = session.last_response
     deep = deep_panel(session.compiler.last_report, session.store)
@@ -200,8 +213,8 @@ def _print_cockpit(console, session: Session) -> None:
     grid.add_column(ratio=1)
     grid.add_column(ratio=1)
     grid.add_row(
-        Panel(deep, title="deep brain - slow, off the clock", height=HEADER_HEIGHT),
-        Panel(fast, title="fast brain - this turn", height=HEADER_HEIGHT),
+        Panel(deep, title="deep brain - slow, off the clock", height=PANEL_HEIGHT),
+        Panel(fast, title="fast brain - this turn", height=PANEL_HEIGHT),
     )
     console.print(grid)
 
@@ -338,6 +351,9 @@ def main(argv: list[str] | None = None) -> int:
                 background=True,
             )
             session.cloud = True
+            session.backend_label = "DEBUG - CLOUD"
+            session.backend_detail = "Claude API"
+            session.offdevice = True
         elif "--openrouter" in args or "--free" in args:
             from .openrouter import (
                 DEEP_MODEL,
@@ -363,6 +379,11 @@ def main(argv: list[str] | None = None) -> int:
                 background=True,
             )
             session.cloud = True
+            session.backend_label = "DEBUG - CLOUD"
+            session.backend_detail = (
+                "OpenRouter free tier" if "--free" in args else "OpenRouter"
+            )
+            session.offdevice = True
         else:
             session = Session(store_dir=mind)
     except RuntimeError as exc:
@@ -375,6 +396,9 @@ def main(argv: list[str] | None = None) -> int:
             # a landed background pass repaints the header in place — the answer didn't wait,
             # the panels catch up (spec §27)
             session.on_compiled = lambda: _paint_header(console, session)
+    from .view import status_bar
+
+    print(status_bar(session.backend_label, session.backend_detail, session.offdevice))
     if session.cloud:
         print(f"(models: deep={session.slow.model}, fast={session.runtime.model.model})")
     print(f"(mind: {mind} - {len(session.store.pages())} pages)")

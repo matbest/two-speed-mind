@@ -157,6 +157,31 @@ turn returns while extraction is still blocked (backlog visible, then flush land
 turn extracted exactly once across several background passes; a failing extraction loses nothing
 (error lands in the report, retry succeeds, marker catches up); the deep panel shows the failure.
 
+## Slice 8 — the assistant acts (tools)  ·  `tests/test_tools.py` (you add)
+
+**T12. Tools.** Spec §28–32. A design-first slice — get the grounded shape right on fakes before
+any real capability.
+- **interfaces.py**: a `Tool` Protocol — `name`, `description`, `locality` ("on-device" |
+  "off-device"), `requires_confirmation: bool`, `input_schema`, `run(inputs) -> str`. And a
+  `Toolbox` the runtime consults.
+- **schema.py**: `ToolCall` (tool, inputs, result, at, confirmed) and an `Action` receipt; a
+  `proposal: ToolCall | None` field on `Response`.
+- **runtime.py**: after retrieval, the fast model may return a structured proposal (tool name +
+  typed inputs) instead of / alongside an answer — schema-validated, never parsed from prose (spec
+  §29). The runtime, not the model, decides execution: on-device read-only tools run; anything
+  side-effecting or off-device is gated on confirmation (spec §31).
+- **fakes.py**: a couple of on-device fake tools (e.g. `now`, `calc`) and one off-device
+  (`web_search` stub) so the gate and the locality posture are testable with no network.
+- **persist.py**: append-only `actions.jsonl` on disk (spec §32); the status bar's `offdevice`
+  becomes `model_offdevice OR any(enabled tool is off-device)` (spec §30).
+- **cli.py**: the cockpit shows the action receipt (proposed → confirmed? → result); a `/tools`
+  command lists the toolbox with localities.
+Tests to write (fakes only): a proposed on-device read-only tool runs and its result is recorded;
+an off-device tool is NOT run without confirmation; the action log round-trips; the status bar
+flips to off-device when an off-device tool is enabled; a malformed proposal is rejected, not
+executed. Real tools (filesystem, shell, web) come after, one at a time, each declaring its
+locality honestly.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

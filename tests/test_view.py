@@ -63,3 +63,15 @@ def test_fast_panel_lists_the_wiki_files_pulled():
 
 def test_fast_panel_before_first_lookup():
     assert "no lookup yet" in fast_panel(None, None, [])
+
+
+def test_status_bar_flags_offdevice_posture():
+    from kaineros.view import status_bar
+
+    cloud = status_bar("DEBUG - CLOUD", "OpenRouter free tier", offdevice=True)
+    assert "NOT local, NOT private" in cloud
+    assert "OpenRouter free tier" in cloud
+
+    local = status_bar("OFFLINE", "deterministic fakes", offdevice=False)
+    assert "on-device: private" in local
+    assert "NOT" not in local

@@ -178,4 +178,27 @@ This prototype proves the *architecture* — with the model faked — as a comma
     quit with a non-empty backlog, the app drains it (briefly, with a message) so said-but-not-
     yet-compiled turns aren't lost with the process.
 
+**The assistant acts (tools)**
+28. The assistant can *do*, not only remember. A **tool** is a declared capability — a name, a
+    one-line description, a typed input schema, a **locality** (`on-device` | `off-device`), and a
+    run function — living behind a Protocol like the models, so tools are pluggable and tested
+    against fakes. The kainome is the assistant's memory; tools are its hands.
+29. Grounding extends to actions. Beyond phrasing, the fast runtime may **propose** a tool call as
+    *structured data* — the tool name and its typed inputs, chosen from the declared tools and
+    grounded in the question plus retrieved pages — never parsed from prose. The proposal, its
+    inputs, and the outcome are a **receipt** the cockpit renders, the same rule as `why`: the
+    model proposes the words and the call; state and the run function decide what actually happens.
+30. Actions carry **locality**, mirroring the models. A tool that stays on the machine (read a
+    local file, do arithmetic, read the kainome) is *on-device*; a tool that reaches the network
+    (web search, send a message) leaves the device. The privacy posture (§27, the status bar) is
+    the sum of the model's locality **and** every enabled tool's locality — a local model with an
+    off-device tool is not a private assistant, and the bar says so.
+31. Side-effecting or irreversible actions (send, delete, purchase, any off-device call) **require
+    explicit user confirmation** before running; read-only on-device tools may run unattended.
+    Confirmation is the honesty principle applied to the world, not only to words — the assistant
+    never acts on the user's behalf without a clear yes.
+32. Every action is **recorded with provenance** — what was called, with what inputs, when, and the
+    result — as an append-only action log on disk beside the wiki. What the assistant *did* is as
+    auditable as what it *believes*.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

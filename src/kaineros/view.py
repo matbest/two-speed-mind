@@ -9,6 +9,17 @@ from .schema import CompileReport, Lookup, Response, Turn
 from .store import Store
 
 
+def status_bar(label: str, detail: str, offdevice: bool) -> str:
+    """The posture strip above the panels: is the mind running on-device, and is it private?
+
+    offdevice is the sum of model locality (and, later, every enabled tool's locality) — true if
+    anything the mind does ships the user's words off the machine.
+    """
+    if offdevice:
+        return f"! {label} - {detail} - your words leave this device: NOT local, NOT private"
+    return f"* {label} - {detail} - on-device: private"
+
+
 def deep_panel(report: CompileReport, store: Store) -> str:
     """The deep brain's report: last pass's tallies, the backlog, and the population counts.
 

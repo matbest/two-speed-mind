@@ -68,6 +68,12 @@ you talk ─► short-term buffer ───────────────�
   `Lookup` trace + what was handed to the fast model: probed terms → hits → floor decisions, pages
   used, buffer fill). Pure functions so the cockpit is testable without a terminal.
 
+- **tools.py** (Slice 8, spec §28–32) — the assistant's hands: a `Tool` Protocol (name,
+  description, `locality`, `requires_confirmation`, `input_schema`, `run`) and a `Toolbox`. The
+  runtime proposes a structured `ToolCall`; the runtime (not the model) executes on-device
+  read-only tools and gates the rest on confirmation. Actions append to `actions.jsonl`; a tool's
+  locality feeds the status bar's posture. Built and tested against fakes first, like the models.
+
 - **persist.py** — the mind on disk (spec §20–23), pure serialization, no policy:
   - `save_store(store, home)` — atomic write of `pool.json` + one `kainome/<gene>.json` per page
     (stale page files deleted); `schema_version` on every file.
