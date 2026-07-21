@@ -98,10 +98,10 @@ def _request(path: str, body: dict | None = None) -> dict:
                 # a daily/hard limit won't recover in seconds — fail fast with a way forward,
                 # don't sit through the retry backoff
                 raise RuntimeError(
-                    "OpenRouter free-tier daily limit reached. Options: run `kaineros` "
-                    "(offline fakes, no network), `kaineros --openrouter` (paid models), set "
-                    "KAINEROS_FREE_DEEP / KAINEROS_FREE_FAST to other free models, or wait for "
-                    "the daily reset (UTC midnight)."
+                    "OpenRouter free-tier daily limit reached (shared across all free models). "
+                    "Options: run `kaineros` (offline fakes, no network), `kaineros --openrouter` "
+                    "(paid models — a persona run is a few cents), or wait for the daily reset "
+                    "(00:00 UTC)."
                 ) from exc
             if exc.code in (429, 500, 502, 503) and backoff is not None:
                 time.sleep(backoff)  # a transient per-minute limit — worth a short wait
