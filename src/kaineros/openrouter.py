@@ -189,9 +189,15 @@ class OpenRouterJudge:
         self.model = model
 
     def _verdict(self, field: str, question: str) -> bool:
-        content = _chat(self.model, JUDGE_SYSTEM, question, schema=_bool_schema(field))
-        # missing field -> conservative False (incumbent defends / not-same); never crash the pass
-        return bool(_json(content).get(field, False))
+        # free models occasionally emit degenerate output — retry once, then default to the
+        # conservative verdict (incumbent defends / not-same); never crash a housekeeping pass
+        for _ in range(2):
+            content = _chat(self.model, JUDGE_SYSTEM, question, schema=_bool_schema(field))
+            try:
+                return bool(_json(content).get(field, False))
+            except ValueError:
+                continue
+        return False
 
     def better(self, gene: str, a: Candidate, b: Candidate) -> bool:
         return self._verdict("a_is_better", better_prompt(gene, a, b))
@@ -217,14 +223,21 @@ class OpenRouterSlowModel:
         if not users:
             return []
         numbered = "\n".join(f"[{i}] {t.text}" for i, t in enumerate(users))
-        content = _chat(
-            self.model,
-            EXTRACT_SYSTEM,
-            f"Conversation turns:\n{numbered}",
-            schema=EXTRACT_SCHEMA,
-            max_tokens=4096,
-        )
-        return candidates_from_items(_json(content).get("candidates", []), users)
+        items: list[dict] = []
+        for _ in range(2):  # retry once on degenerate output, then extract nothing
+            content = _chat(
+                self.model,
+                EXTRACT_SYSTEM,
+                f"Conversation turns:\n{numbered}",
+                schema=EXTRACT_SCHEMA,
+                max_tokens=4096,
+            )
+            try:
+                items = _json(content).get("candidates", [])
+                break
+            except ValueError:
+                continue
+        return candidates_from_items(items, users)
 
 
 class OpenRouterFastModel:
