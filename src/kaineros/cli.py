@@ -142,9 +142,7 @@ def _print_cockpit(console, session: Session) -> None:
     from .view import deep_panel, fast_panel
 
     resp = session.last_response
-    deep = deep_panel(
-        session.compiler.last_report, session.store, session.compiler.promote_after
-    )
+    deep = deep_panel(session.compiler.last_report, session.store)
     fast = fast_panel(resp.trace if resp else None, resp, session.buffer)
     grid = Table.grid(expand=True)
     grid.add_column(ratio=1)

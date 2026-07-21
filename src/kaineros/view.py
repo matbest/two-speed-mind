@@ -9,27 +9,21 @@ from .schema import CompileReport, Lookup, Response, Turn
 from .store import Store
 
 
-def deep_panel(report: CompileReport, store: Store, promote_after: int = 3) -> str:
-    """The deep brain's report: last pass's tallies, the backlog, and the population."""
-    lines = [
-        f"last pass: {report.inserted} inserted, {report.merged} merged, "
-        f"{report.split} split, {report.fused} fused, {report.promoted} promoted",
-        f"backlog: {report.backlog} turns awaiting compilation",
-    ]
+def deep_panel(report: CompileReport, store: Store) -> str:
+    """The deep brain's report: last pass's tallies, the backlog, and the population counts.
+
+    Counts only — the wiki itself is browsable on disk; the panel is a gauge, not a listing.
+    """
     genes = store.genes()
     n_candidates = sum(len(store.candidates(g)) for g in genes)
-    lines.append(f"population: {len(genes)} genes, {n_candidates} candidates")
-    for gene in genes:
-        top = store.top(gene)
-        if top is None:
-            continue
-        page = store.page(gene)
-        if page is not None and page.content == top.content:
-            status = "page"
-        else:
-            status = f"{top.wins}/{promote_after}"
-        lines.append(f"  {gene:<14} {status:<6} top: {top.content}")
-    return "\n".join(lines)
+    return "\n".join(
+        [
+            f"last pass: {report.inserted} inserted, {report.merged} merged, "
+            f"{report.split} split, {report.fused} fused, {report.promoted} promoted",
+            f"backlog: {report.backlog} turns awaiting compilation",
+            f"wiki: {len(store.clean)} pages · pool: {n_candidates} candidates in {len(genes)} genes",
+        ]
+    )
 
 
 def fast_panel(trace: Lookup | None, response: Response | None, buffer: list[Turn]) -> str:

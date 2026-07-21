@@ -11,29 +11,27 @@ def cand(gene: str, content: str, score: float = 0.0) -> Candidate:
     return Candidate(gene=gene, content=content, provenance=Provenance(created_at=score))
 
 
-def test_deep_panel_shows_population_and_wins_progress():
+def test_deep_panel_shows_counts_not_listings():
     store = Store()
     comp = Compiler(store, FakeJudge(key=lambda c: c.provenance.created_at), promote_after=3)
     comp.insert(cand("food", "apple", score=5))
     comp.insert(cand("food", "kiwi", score=1))
     comp.housekeep()
-    comp.housekeep()
-    text = deep_panel(comp.last_report, store, promote_after=comp.promote_after)
-    assert "1 genes, 2 candidates" in text
-    assert "food" in text
-    assert "2/3" in text  # the top's wins toward promote_after
-    assert "top: apple" in text  # ranked: the winner is shown as top
+    text = deep_panel(comp.last_report, store)
+    assert "2 candidates in 1 genes" in text
+    assert "0 pages" in text          # contested pool, nothing promoted yet
+    assert "top:" not in text         # counts only — the wiki itself lives on disk
 
 
-def test_deep_panel_shows_tallies_and_marks_pages():
+def test_deep_panel_shows_tallies_and_page_count():
     store = Store()
     comp = Compiler(store, FakeJudge(), promote_after=1)
     comp.insert(cand("food", "apple"))
     comp.housekeep()
-    text = deep_panel(comp.last_report, store, promote_after=1)
+    text = deep_panel(comp.last_report, store)
     assert "1 inserted" in text
     assert "1 promoted" in text
-    assert "page" in text  # promoted gene marked as settled
+    assert "wiki: 1 pages" in text
 
 
 def test_fast_panel_marks_blocked_with_the_tier_that_failed():
