@@ -36,6 +36,14 @@ from .cloud import (
 )
 from .schema import Candidate, Page, Turn
 
+class RateLimitedError(RuntimeError):
+    """The free-tier daily limit is spent. Carries the reset time so the app can wait it out."""
+
+    def __init__(self, message: str, reset_at: float) -> None:
+        super().__init__(message)
+        self.reset_at = reset_at  # epoch seconds when the limit resets
+
+
 API = "https://openrouter.ai/api/v1"
 DEEP_MODEL = os.environ.get("OPENROUTER_DEEP_MODEL", "anthropic/claude-opus-4.8")
 FAST_MODEL = os.environ.get("OPENROUTER_FAST_MODEL", "anthropic/claude-haiku-4.5")
@@ -80,6 +88,11 @@ def ensure_key() -> None:
     print(f"  saved to {_KEY_FILE} (git-ignored); delete that file to forget it")
 
 
+def _next_utc_midnight() -> float:
+    now = time.time()
+    return (int(now // 86400) + 1) * 86400  # next 00:00 UTC in epoch seconds
+
+
 def _request(path: str, body: dict | None = None) -> dict:
     for attempt, backoff in enumerate((5, 15, 30, None)):
         req = urllib.request.Request(
@@ -95,13 +108,15 @@ def _request(path: str, body: dict | None = None) -> dict:
             if exc.code == 429 and (
                 exc.headers.get("X-RateLimit-Remaining") == "0" or "per-day" in body
             ):
-                # a daily/hard limit won't recover in seconds — fail fast with a way forward,
-                # don't sit through the retry backoff
-                raise RuntimeError(
+                # a daily/hard limit won't recover in seconds — carry the reset time so the app
+                # can show a countdown and wait it out, rather than dying
+                reset_ms = exc.headers.get("X-RateLimit-Reset")
+                reset_at = float(reset_ms) / 1000.0 if reset_ms else _next_utc_midnight()
+                raise RateLimitedError(
                     "OpenRouter free-tier daily limit reached (shared across all free models). "
-                    "Options: run `kaineros` (offline fakes, no network), `kaineros --openrouter` "
-                    "(paid models — a persona run is a few cents), or wait for the daily reset "
-                    "(00:00 UTC)."
+                    "Options: run `kaineros` (offline fakes), `kaineros --openrouter` (paid — a "
+                    "few cents), or wait for the reset.",
+                    reset_at,
                 ) from exc
             if exc.code in (429, 500, 502, 503) and backoff is not None:
                 time.sleep(backoff)  # a transient per-minute limit — worth a short wait

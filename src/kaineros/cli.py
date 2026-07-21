@@ -318,6 +318,41 @@ def _exit_cockpit_screen() -> None:
     sys.stdout.flush()
 
 
+def _wait_for_reset(console, vt_ok: bool, reset_at: float) -> bool:
+    """Non-interactive countdown header until the rate limit resets. True when it passes (retry),
+    False if the user quits with Ctrl+C. The app 'starts up' but waits instead of dying."""
+    pinned = console is not None and vt_ok and getattr(console, "legacy_windows", False) is False
+    if pinned:
+        sys.stdout.write("\x1b[2J")  # clear; the countdown owns the whole screen
+        sys.stdout.flush()
+    try:
+        while True:
+            remaining = reset_at - time.time()
+            if remaining <= 0:
+                print()  # move off the countdown line
+                return True
+            h, rem = divmod(int(remaining), 3600)
+            m, s = divmod(rem, 60)
+            bar = (
+                f"! RATE-LIMITED - free tier daily limit spent - "
+                f"resets in {h:02d}:{m:02d}:{s:02d}  (Ctrl+C to quit, or run offline: kaineros)"
+            )
+            if pinned:
+                line = bar[: console.width].ljust(console.width)
+                from rich.text import Text
+
+                sys.stdout.write("\x1b7\x1b[1;1H")  # save cursor, home
+                console.print(Text(line, style="bold white on red"), no_wrap=True, overflow="crop", end="")
+                sys.stdout.write("\x1b8")  # restore cursor
+                sys.stdout.flush()
+            else:
+                print("\r" + bar[:120].ljust(120), end="", flush=True)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print()
+        return False
+
+
 def _cmd_model(session: Session, args: list[str]) -> None:
     """/model — show or switch the per-brain models (arguments-first, picker as fallback)."""
     if not session.cloud:
@@ -435,20 +470,19 @@ def main(argv: list[str] | None = None) -> int:
         except ImportError:
             print("(rich not installed - running plain; pip install rich for the cockpit)")
 
-    try:
+    def _build() -> Session:
         if "--cloud" in args:
             from .cloud import CloudFastModel, CloudJudge, CloudSlowModel, preflight
 
             preflight()
-            session = Session(store_dir=mind, background=True)
-            session.compiler.judge = CloudJudge(meter=session.deep_meter)
-            session.slow = CloudSlowModel(meter=session.deep_meter)
-            session.runtime.model = CloudFastModel(meter=session.fast_meter)
-            session.cloud = True
-            session.backend_label = "DEBUG - CLOUD"
-            session.backend_detail = "Claude API"
-            session.offdevice = True
-        elif "--openrouter" in args or "--free" in args:
+            s = Session(store_dir=mind, background=True)
+            s.compiler.judge = CloudJudge(meter=s.deep_meter)
+            s.slow = CloudSlowModel(meter=s.deep_meter)
+            s.runtime.model = CloudFastModel(meter=s.fast_meter)
+            s.cloud = True
+            s.backend_label, s.backend_detail, s.offdevice = "DEBUG - CLOUD", "Claude API", True
+            return s
+        if "--openrouter" in args or "--free" in args:
             from .openrouter import (
                 DEEP_MODEL,
                 FAST_MODEL,
@@ -464,22 +498,31 @@ def main(argv: list[str] | None = None) -> int:
             deep = FREE_DEEP_MODEL if "--free" in args else DEEP_MODEL
             fast = FREE_FAST_MODEL if "--free" in args else FAST_MODEL
             ensure_key()
-            preflight(fast)
-            session = Session(store_dir=mind, background=True)
-            session.compiler.judge = OpenRouterJudge(deep, meter=session.deep_meter)
-            session.slow = OpenRouterSlowModel(deep, meter=session.deep_meter)
-            session.runtime.model = OpenRouterFastModel(fast, meter=session.fast_meter)
-            session.cloud = True
-            session.backend_label = "DEBUG - CLOUD"
-            session.backend_detail = (
-                "OpenRouter free tier" if "--free" in args else "OpenRouter"
-            )
-            session.offdevice = True
-        else:
-            session = Session(store_dir=mind)
-    except RuntimeError as exc:
-        print(f"error: {exc}")
-        return 1
+            preflight(fast)  # RateLimitedError here → the countdown loop below waits it out
+            s = Session(store_dir=mind, background=True)
+            s.compiler.judge = OpenRouterJudge(deep, meter=s.deep_meter)
+            s.slow = OpenRouterSlowModel(deep, meter=s.deep_meter)
+            s.runtime.model = OpenRouterFastModel(fast, meter=s.fast_meter)
+            s.cloud = True
+            s.backend_label = "DEBUG - CLOUD"
+            s.backend_detail = "OpenRouter free tier" if "--free" in args else "OpenRouter"
+            s.offdevice = True
+            return s
+        return Session(store_dir=mind)
+
+    from .openrouter import RateLimitedError
+
+    while True:
+        try:
+            session = _build()
+            break
+        except RateLimitedError as exc:
+            if not _wait_for_reset(console, vt_ok, exc.reset_at):
+                return 0  # user quit the wait
+            print("free tier reset - starting up...")  # retry the build
+        except RuntimeError as exc:
+            print(f"error: {exc}")
+            return 1
     pinned = console is not None and vt_ok and not console.legacy_windows
     if pinned:
         _enter_cockpit_screen(console, session)
