@@ -1,0 +1,76 @@
+# Example conversations that should become knowledge about the user.
+#
+# Each scenario: the turns a user says -> what the mind should afterwards know (keywords that must
+# appear in the promoted pages) and a probe question whose answer must contain them.
+#
+# This is the yardstick for the real-model slice (T9a): run `python -m twospeed.evals` to feed
+# these to a cloud-model session and grade the store. Spends tokens; not part of pytest.
+# `python -m twospeed.evals --fakes` runs the same corpus on the fakes for free (expect failures —
+# the fake extractor is deliberately crude; the gap between the two runs is the model's value).
+
+[[scenario]]
+name = "home city - a simple stated fact"
+turns = [
+    "I moved to Berlin last month, still unpacking boxes",
+    "The winters here are rougher than I expected",
+    "My commute across town is twenty minutes by bike",
+]
+[[scenario.expect]]
+keywords = ["berlin"]
+question = "Which city do I live in?"
+
+[[scenario]]
+name = "correction - a newer statement displaces an older one"
+turns = [
+    "I work at Acme Corp as a data engineer",
+    "Long week, three broken pipelines",
+    "Big news: I quit Acme, I start at Initech on Monday",
+    "Really looking forward to the Initech role",
+]
+[[scenario.expect]]
+keywords = ["initech"]
+absent = ["acme"]          # the old job must NOT survive in the answer
+question = "Where do I work?"
+
+[[scenario]]
+name = "persona preference - low stakes, no competition needed"
+turns = [
+    "Please call me Mat, not Mathew",
+    "And keep answers short, I mostly read on my phone",
+]
+[[scenario.expect]]
+keywords = ["mat"]
+question = "What name should you call me?"
+
+[[scenario]]
+name = "same topic, different claims - must not collide"
+turns = [
+    "I love mangoes, I could eat them every day",
+    "I'm badly allergic to peanuts though, it's serious",
+]
+[[scenario.expect]]
+keywords = ["mango"]
+question = "Which fruit do I love?"
+[[scenario.expect]]
+keywords = ["peanut"]
+question = "What am I allergic to?"
+
+[[scenario]]
+name = "family fact"
+turns = [
+    "My daughter Ivy turned six yesterday",
+    "The party was chaos - eleven kids and a pinata",
+]
+[[scenario.expect]]
+keywords = ["ivy"]
+question = "What is my daughter's name?"
+
+[[scenario]]
+name = "repetition is confirmation, not a new fact"
+turns = [
+    "I cycle to work every day",
+    "Rain or shine - like I said, I always cycle in to work",
+]
+[[scenario.expect]]
+keywords = ["cycle"]
+question = "How do I get to work?"

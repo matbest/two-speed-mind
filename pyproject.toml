@@ -11,7 +11,8 @@ dependencies = ["rich>=13"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-# A real local model adapter is the last task; keep these out of the core.
+cloud = ["anthropic>=0.60"]
+# The local model adapter is the last task; keep it out of the core.
 # local = ["llama-cpp-python>=0.2"]
 
 [project.scripts]

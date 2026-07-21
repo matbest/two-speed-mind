@@ -21,13 +21,14 @@ from .store import Store
 
 BANNER = (
     "two-speed mind - a local assistant that reads what it has learned.\n"
-    "Type to chat. Slash commands: /help  /notebook  /why  /forget  /quit\n"
+    "Type to chat. Slash commands: /help  /notebook  /why  /model  /forget  /quit\n"
 )
 
 HELP = (
     "  /help      show this\n"
     "  /notebook  show the clean knowledge base (promoted pages)\n"
     "  /why       the grounded reason behind the last answer\n"
+    "  /model     show or switch models: /model deep|fast [model-id]  (--cloud only)\n"
     "  /forget    clear the short-term buffer\n"
     "  /quit      exit\n"
 )
@@ -50,6 +51,7 @@ class Session:
         self.buffer: list[Turn] = []
         self.compiled_upto = 0  # spec §17: turns before this index have been extracted
         self.last_response: Response | None = None
+        self.cloud = False  # set by main() when wired with the cloud adapters
 
     def backlog(self) -> int:
         return len(self.buffer) - self.compiled_upto
@@ -100,6 +102,42 @@ def _print_cockpit(console, session: Session) -> None:
     )
 
 
+def _cmd_model(session: Session, args: list[str]) -> None:
+    """/model — show or switch the per-brain models (arguments-first, picker as fallback)."""
+    if not session.cloud:
+        print("  /model needs --cloud (the fakes have no models to pick)")
+        return
+    judge, slow, fast = session.compiler.judge, session.slow, session.runtime.model
+    if not args:
+        print(f"  deep: {slow.model} (extractor + judge)   fast: {fast.model}")
+        print("  usage: /model deep|fast [model-id]")
+        return
+    role = args[0].lower()
+    if role not in ("deep", "fast"):
+        print("  usage: /model deep|fast [model-id]")
+        return
+    if len(args) >= 2:
+        name = args[1]
+    else:
+        ids = [m.id for m in slow.client.models.list()]
+        for i, mid in enumerate(ids, 1):
+            print(f"  {i}) {mid}")
+        pick = input("  pick> ").strip()
+        if pick.isdigit() and 1 <= int(pick) <= len(ids):
+            name = ids[int(pick) - 1]
+        elif pick in ids:
+            name = pick
+        else:
+            print("  (unchanged)")
+            return
+    if role == "deep":
+        judge.model = name
+        slow.model = name
+    else:
+        fast.model = name
+    print(f"  {role} -> {name}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     plain = "--plain" in args or not sys.stdout.isatty()
@@ -113,7 +151,19 @@ def main(argv: list[str] | None = None) -> int:
         except ImportError:
             print("(rich not installed - running plain; pip install rich for the cockpit)")
 
-    session = Session()
+    if "--cloud" in args:
+        try:
+            from .cloud import CloudFastModel, CloudJudge, CloudSlowModel, preflight
+
+            preflight()
+            session = Session(judge=CloudJudge(), slow=CloudSlowModel(), fast=CloudFastModel())
+            session.cloud = True
+            print("(cloud models: deep=" + session.slow.model + ", fast=" + session.runtime.model.model + ")")
+        except RuntimeError as exc:
+            print(f"error: {exc}")
+            return 1
+    else:
+        session = Session()
     print(BANNER)
     while True:
         try:
@@ -139,6 +189,8 @@ def main(argv: list[str] | None = None) -> int:
             elif cmd == "/why":
                 why = session.last_response.why if session.last_response else "(no answer yet)"
                 print("  " + why)
+            elif cmd == "/model":
+                _cmd_model(session, line.split()[1:])
             elif cmd == "/forget":
                 session.forget()
                 print("  (buffer cleared)")

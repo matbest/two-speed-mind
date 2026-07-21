@@ -120,6 +120,10 @@ judge prompts tiny, they run pairwise in housekeeping. `extract` fills a Candida
 1–4 test stay on the fakes, untouched. Add `/model deep|fast [name]` (arguments-first, numbered
 picker as fallback); the cloud model list comes from the Models API. Purpose: test the
 *architecture* against strong models — if it misbehaves here the design is wrong, not the model.
+The yardstick is the **eval corpus** at `evals/conversations.toml`: example conversations → the
+knowledge they should become (keywords that must reach the clean layer + a probe question). Run
+`python -m twospeed.evals` to grade the real models against it (spends tokens; not part of
+pytest — pytest only checks the corpus is well-formed); `--fakes` runs it free as a harness smoke.
 
 **T9b. Local adapter.** Add `twospeed/local.py`: `LocalJudge` / `LocalFastModel` / `LocalSlowModel`
 backed by a local model (e.g. `llama-cpp-python` + a small GGUF) behind the `local` optional
