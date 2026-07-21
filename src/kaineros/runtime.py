@@ -15,19 +15,28 @@ from .schema import Lookup, LookupHit, Page, Response, Turn
 from .store import Store
 
 
-_SUFFIXES = ("ing", "ed", "ies", "es", "s", "y", "ic")
+_SUFFIXES = ("ies", "ing", "es", "ed", "s", "y", "ic")
 
 
-def _stem(token: str) -> str:
-    """Crude suffix-stripping so 'loves'/'love', 'called'/'call', 'allergy'/'allergic' meet."""
+def _variants(token: str) -> set[str]:
+    """The token plus every plausible suffix-stripped form.
+
+    Matching on ALL variants (not one committed stem) is what lets 'lives'→{lives,live,liv}
+    meet 'live'→{live}, while 'mangoes'→{...,mango} still meets 'mango' — single-stem
+    algorithms fail one of those two whichever suffix order they pick.
+    """
+    out = {token}
     for suffix in _SUFFIXES:
         if token.endswith(suffix) and len(token) - len(suffix) >= 3:
-            return token[: -len(suffix)]
-    return token
+            out.add(token[: -len(suffix)])
+    return out
 
 
 def _tokens(text: str) -> set[str]:
-    return {_stem(t) for t in re.findall(r"[a-z0-9]+", text.lower())}
+    tokens: set[str] = set()
+    for t in re.findall(r"[a-z0-9]+", text.lower()):
+        tokens |= _variants(t)
+    return tokens
 
 CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
 HEDGE_PREFIX = "If I remember rightly: "
