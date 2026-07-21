@@ -115,9 +115,9 @@ def _timed(fn, show: bool):
 
 
 def _print_cockpit(console, session: Session) -> None:
-    """The two panels (spec §18): deep brain top-left, fast brain top-right."""
-    from rich.columns import Columns
+    """The two panels (spec §18): deep brain LEFT, fast brain RIGHT — always side by side."""
     from rich.panel import Panel
+    from rich.table import Table
 
     from .view import deep_panel, fast_panel
 
@@ -126,16 +126,14 @@ def _print_cockpit(console, session: Session) -> None:
         session.compiler.last_report, session.store, session.compiler.promote_after
     )
     fast = fast_panel(resp.trace if resp else None, resp, session.buffer)
-    console.print(
-        Columns(
-            [
-                Panel(deep, title="deep brain - slow, off the clock"),
-                Panel(fast, title="fast brain - this turn"),
-            ],
-            equal=True,
-            expand=True,
-        )
+    grid = Table.grid(expand=True)
+    grid.add_column(ratio=1)
+    grid.add_column(ratio=1)
+    grid.add_row(
+        Panel(deep, title="deep brain - slow, off the clock"),
+        Panel(fast, title="fast brain - this turn"),
     )
+    console.print(grid)
 
 
 def _cmd_model(session: Session, args: list[str]) -> None:
