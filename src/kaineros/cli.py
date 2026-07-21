@@ -140,6 +140,10 @@ def _cmd_model(session: Session, args: list[str]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
+    if args and args[0] == "evals":  # `kaineros evals [--free|--openrouter|--fakes|--only X]`
+        from .evals import main as evals_main
+
+        return evals_main(args[1:])
     plain = "--plain" in args or not sys.stdout.isatty()
 
     console = None
