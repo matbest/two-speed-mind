@@ -6,11 +6,11 @@ normal win path. Spec §4, §6.
 """
 import time
 
-from twospeed.compiler import Compiler
-from twospeed.fakes import FakeFastModel, FakeJudge
-from twospeed.runtime import HEDGE_PREFIX, Runtime
-from twospeed.schema import Candidate, Page, Provenance
-from twospeed.store import Store
+from kaineus.compiler import Compiler
+from kaineus.fakes import FakeFastModel, FakeJudge
+from kaineus.runtime import HEDGE_PREFIX, Runtime
+from kaineus.schema import Candidate, Page, Provenance
+from kaineus.store import Store
 
 
 class CountingJudge(FakeJudge):

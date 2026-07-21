@@ -1,11 +1,10 @@
-# CLAUDE.md
+# AGENTS.md
 
-Context for Claude Code sessions in this repo.
+Context for Codex sessions in this repo.
 
 ## What this is
 
-**Kaineus** — an assistant that compiles experience into its **kainome** (its evolving knowledge
-genome). A prototype of the **Two-Speed Mind** (see `docs/plan.md`, which distils White Paper 1). Two models
+A prototype of the **Two-Speed Mind** (see `docs/plan.md`, which distils White Paper 1). Two models
 at two speeds over one knowledge base:
 
 - **Slow-deep compiler** — turns raw conversation into ranked candidate facts, and promotes the
@@ -58,4 +57,4 @@ docs/             spec.md, plan.md, tasks.md
 
 gene = a concept/topic key · candidate (allele) = a competing version of a fact · gene pool = the
 candidates for a gene · selection = pairwise ranking + promotion · page = a promoted clean entry ·
-kainome = the clean layer the fast model reads (the evolving knowledge genome). Provenance/confidence/stakes travel on every fact.
+genome = the clean layer the fast model reads. Provenance/confidence/stakes travel on every fact.

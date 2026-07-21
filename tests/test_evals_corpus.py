@@ -1,9 +1,9 @@
 """The eval corpus stays well-formed (free — no models, no tokens; docs/tasks.md T9a).
 
-The corpus itself is graded by `python -m twospeed.evals`, which spends tokens and is
+The corpus itself is graded by `python -m kaineus.evals`, which spends tokens and is
 deliberately not part of pytest.
 """
-from twospeed.evals import load_corpus
+from kaineus.evals import load_corpus
 
 
 def test_corpus_parses_and_is_well_formed():
@@ -22,7 +22,7 @@ def test_corpus_parses_and_is_well_formed():
 def test_corpus_runs_on_the_fakes_without_error():
     # not graded — the fake extractor is deliberately crude; this only pins that the harness
     # itself is sound (feeding, settling, probing) with zero cost
-    from twospeed.evals import run_scenario
+    from kaineus.evals import run_scenario
 
     results = run_scenario(load_corpus()[0], fakes=True)
     assert len(results) >= 2  # a stored-check and an answered-check per expectation

@@ -2,7 +2,7 @@
 
 Work top to bottom. Each task is done when its named tests are **green** (`pytest`). Don't weaken a
 test; fix the code, or raise a real mismatch with the user. Build against the fakes in
-`twospeed/fakes.py` — no real model until the last task.
+`kaineus/fakes.py` — no real model until the last task.
 
 ---
 
@@ -50,7 +50,7 @@ text → append a `Turn` to the buffer, run `SlowModel.extract` **on the not-yet
 smoke test must assert a turn is never extracted twice), then `Compiler.insert` +
 `Compiler.housekeep`, then `Runtime.respond` and print `answer`. Slash commands: `/help`,
 `/notebook` (print `store.clean` pages), `/why` (print the last `Response.why`), `/forget` (clear
-buffer/selection), `/quit`. `twospeed` should hold a real (if simple) conversation end-to-end.
+buffer/selection), `/quit`. `kaineus` should hold a real (if simple) conversation end-to-end.
 Add `tests/test_cli.py` with a smoke test driving a scripted transcript (use `--plain` mode).
 
 **T7.5. The cockpit.** Make the shell show the mind working (spec §15, §18–19).
@@ -109,23 +109,23 @@ pool; unrelated pages do *not* merge; nothing merges while the duplicates are st
 
 ## Slice 5 — real models (last; adapters only)
 
-**T9a. Cloud adapter (first).** Add `twospeed/cloud.py`: `CloudJudge` / `CloudSlowModel` /
+**T9a. Cloud adapter (first).** Add `kaineus/cloud.py`: `CloudJudge` / `CloudSlowModel` /
 `CloudFastModel` behind the same Protocols, on the Claude API (`anthropic` package, behind the
 `cloud` optional dependency: `pip install -e ".[cloud]"`; auth via `ANTHROPIC_API_KEY`). Deep roles
 (extract + the three judge questions) default to `claude-opus-4-8`; the fast phraser to
 `claude-haiku-4-5`. Judge calls are **forced-choice** — the model answers only A-or-B / yes-or-no
 via structured outputs, never parsed prose (the grounding rule extends to the model boundary); keep
 judge prompts tiny, they run pairwise in housekeeping. `extract` fills a Candidate JSON schema
-(structured outputs). `twospeed --cloud` runs the chat on cloud models; the core and every Slice
+(structured outputs). `kaineus --cloud` runs the chat on cloud models; the core and every Slice
 1–4 test stay on the fakes, untouched. Add `/model deep|fast [name]` (arguments-first, numbered
 picker as fallback); the cloud model list comes from the Models API. Purpose: test the
 *architecture* against strong models — if it misbehaves here the design is wrong, not the model.
 The yardstick is the **eval corpus** at `evals/conversations.toml`: example conversations → the
 knowledge they should become (keywords that must reach the clean layer + a probe question). Run
-`python -m twospeed.evals` to grade the real models against it (spends tokens; not part of
+`python -m kaineus.evals` to grade the real models against it (spends tokens; not part of
 pytest — pytest only checks the corpus is well-formed); `--fakes` runs it free as a harness smoke.
 
-**T9b. Local adapter.** Add `twospeed/local.py`: `LocalJudge` / `LocalFastModel` / `LocalSlowModel`
+**T9b. Local adapter.** Add `kaineus/local.py`: `LocalJudge` / `LocalFastModel` / `LocalSlowModel`
 backed by a local model (e.g. `llama-cpp-python` + a small GGUF) behind the `local` optional
 dependency. Same Protocols; nothing else changes. `/model`'s local list comes from Ollama
 (`/api/tags`) or a curated `models.toml`. If quality drops vs the cloud run, the delta is the

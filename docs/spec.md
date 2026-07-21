@@ -1,4 +1,4 @@
-# Spec — Two-Speed Mind (prototype)
+# Spec — Kaineus, the two-speed mind (prototype)
 
 ## Goal
 
@@ -96,7 +96,7 @@ This prototype proves the *architecture* — with the model faked — as a comma
     after the fact or phrased by the model.
 
 **The chat app**
-16. `twospeed` starts a REPL; plain text is a conversation turn; `/help`, `/notebook`, `/why`,
+16. `kaineus` starts a REPL; plain text is a conversation turn; `/help`, `/notebook`, `/why`,
     `/forget`, `/quit` work as slash commands.
 17. After a turn, the slow compiler consolidates the buffer into the base (so the base grows as you
     talk). The contract is **exactly-once**: the session owns the buffer and a **compiled marker**;

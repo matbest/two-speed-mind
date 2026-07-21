@@ -2,9 +2,9 @@
 
 Drives scripted transcripts through Session (the REPL's engine) and through main() itself.
 """
-from twospeed.cli import Session, main
-from twospeed.fakes import FakeSlowModel
-from twospeed.schema import Candidate, Turn
+from kaineus.cli import Session, main
+from kaineus.fakes import FakeSlowModel
+from kaineus.schema import Candidate, Turn
 
 
 class CountingSlowModel(FakeSlowModel):

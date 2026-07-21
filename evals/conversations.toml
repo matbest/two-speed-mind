@@ -3,9 +3,9 @@
 # Each scenario: the turns a user says -> what the mind should afterwards know (keywords that must
 # appear in the promoted pages) and a probe question whose answer must contain them.
 #
-# This is the yardstick for the real-model slice (T9a): run `python -m twospeed.evals` to feed
+# This is the yardstick for the real-model slice (T9a): run `python -m kaineus.evals` to feed
 # these to a cloud-model session and grade the store. Spends tokens; not part of pytest.
-# `python -m twospeed.evals --fakes` runs the same corpus on the fakes for free (expect failures —
+# `python -m kaineus.evals --fakes` runs the same corpus on the fakes for free (expect failures —
 # the fake extractor is deliberately crude; the gap between the two runs is the model's value).
 
 [[scenario]]

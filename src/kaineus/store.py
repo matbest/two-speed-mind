@@ -11,7 +11,7 @@ class Store:
     def __init__(self) -> None:
         # gene -> candidates, ranked best-first (the pool)
         self.pool: dict[str, list[Candidate]] = {}
-        # gene -> promoted page (the clean layer / genome)
+        # gene -> promoted page (the clean layer — the kainome)
         self.clean: dict[str, Page] = {}
 
     def genes(self) -> list[str]:

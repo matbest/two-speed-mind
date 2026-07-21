@@ -2,10 +2,10 @@
 
 RED until Compiler.insert / Compiler.housekeep are implemented.
 """
-from twospeed.compiler import Compiler
-from twospeed.fakes import FakeJudge
-from twospeed.schema import Candidate, Provenance
-from twospeed.store import Store
+from kaineus.compiler import Compiler
+from kaineus.fakes import FakeJudge
+from kaineus.schema import Candidate, Provenance
+from kaineus.store import Store
 
 
 def cand(gene: str, content: str, score: float = 0.0) -> Candidate:

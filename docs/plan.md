@@ -9,7 +9,7 @@ you talk ─► short-term buffer ───────────────�
                     │ (later, off the interactive path)            │ reads
                     ▼                                              │
              slow Compiler ─► gene pool (competing candidates) ─► clean layer (promoted pages)
-                                 ranked by pairwise judge              = the "genome" the fast model reads
+                                 ranked by pairwise judge              = the "kainome" the fast model reads
 ```
 
 ## Components (files)
@@ -81,7 +81,7 @@ you talk ─► short-term buffer ───────────────�
 
 ## Testing strategy
 
-Everything is tested against **deterministic fakes** (`twospeed/fakes.py`):
+Everything is tested against **deterministic fakes** (`kaineus/fakes.py`):
 - `FakeJudge(key)` — `better = key(a) > key(b)`, so ranking is predictable in tests.
 - `FakeFastModel` — returns a fixed template from the pages (so we can assert the *why* is grounded
   independently of the words).

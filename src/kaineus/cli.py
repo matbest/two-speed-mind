@@ -1,6 +1,6 @@
 """The two-speed chat shell.
 
-Run with ``twospeed`` or ``python -m twospeed``. Plain text is a conversation turn; lines starting
+Run with ``kaineus`` or ``python -m kaineus``. Plain text is a conversation turn; lines starting
 with ``/`` are slash commands. Wired with the deterministic fakes for now — swap in a cloud/local
 model (Slice 5) without touching this file.
 
@@ -20,13 +20,13 @@ from .schema import Page, Response, Turn
 from .store import Store
 
 BANNER = (
-    "two-speed mind - a local assistant that reads what it has learned.\n"
+    "kaineus - a two-speed mind that compiles experience into its kainome.\n"
     "Type to chat. Slash commands: /help  /notebook  /why  /model  /forget  /quit\n"
 )
 
 HELP = (
     "  /help      show this\n"
-    "  /notebook  show the clean knowledge base (promoted pages)\n"
+    "  /notebook  show the kainome (promoted pages - the clean knowledge base)\n"
     "  /why       the grounded reason behind the last answer\n"
     "  /model     show or switch models: /model deep|fast [model-id]  (--cloud only)\n"
     "  /forget    clear the short-term buffer\n"
