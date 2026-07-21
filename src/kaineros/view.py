@@ -28,24 +28,24 @@ def deep_panel(report: CompileReport, store: Store) -> str:
 
 
 def fast_panel(trace: Lookup | None, response: Response | None, buffer: list[Turn]) -> str:
-    """The fast brain's report: the lookup it issued and what was handed to the phraser."""
+    """The fast brain's report: which wiki files the lookup pulled, and what the floor hid."""
+    from .persist import _safe  # gene -> the filename you'd browse in kainome/
+
     if trace is None:
         return "no lookup yet - say something"
     lines = [f"probed: {', '.join(trace.query_terms) or '(nothing)'}"]
-    if not trace.hits:
-        lines.append("  (no pages to examine)")
-    for h in trace.hits:
-        if h.decision == "admitted":
-            detail = f"admitted ({h.confidence} >= {trace.floor})"
-        elif h.decision == "blocked":
-            detail = f"blocked ({h.confidence} < {trace.floor})"
-        else:
-            detail = "no match"
-        lines.append(f"  {h.gene:<14} {h.strength} hit(s)  {detail}")
-    lines.append(f"floor: {trace.floor}")
-    if trace.abstained:
-        lines.append("abstained - nothing cleared the floor")
+    admitted = [h for h in trace.hits if h.decision == "admitted"]
+    blocked = [h for h in trace.hits if h.decision == "blocked"]
+    if admitted:
+        lines.append("pulled from the wiki:")
+        for h in admitted:
+            lines.append(f"  {_safe(h.gene)}.md  ({h.strength} hit(s), {h.confidence})")
     else:
-        used = len(response.used) if response else 0
-        lines.append(f"sent to phrase: {used} page(s) + {len(buffer)}-turn buffer")
+        lines.append("pulled nothing from the wiki")
+    for h in blocked:
+        lines.append(f"  blocked: {_safe(h.gene)}.md ({h.confidence} < {trace.floor} floor)")
+    if trace.abstained:
+        lines.append("abstained")
+    else:
+        lines.append(f"phrased from {len(response.used) if response else 0} page(s) + {len(buffer)}-turn buffer")
     return "\n".join(lines)

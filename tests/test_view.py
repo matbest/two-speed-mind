@@ -42,12 +42,12 @@ def test_fast_panel_marks_blocked_with_the_tier_that_failed():
     rt = Runtime(store, FakeFastModel(), confidence_floor="high")
     resp = rt.respond("what food do I like?")
     text = fast_panel(resp.trace, resp, [])
-    assert "food" in text
-    assert "blocked (low < high)" in text
+    assert "blocked: food.md (low < high floor)" in text  # the floor hid it, and says so
+    assert "pulled nothing from the wiki" in text
     assert "abstained" in text
 
 
-def test_fast_panel_shows_probe_admission_and_handoff():
+def test_fast_panel_lists_the_wiki_files_pulled():
     store = Store()
     store.clean["food"] = Page(
         gene="food", content="you like apples", provenance=Provenance(confidence="high")
@@ -55,9 +55,10 @@ def test_fast_panel_shows_probe_admission_and_handoff():
     rt = Runtime(store, FakeFastModel())
     resp = rt.respond("what food do I like?")
     text = fast_panel(resp.trace, resp, [])
-    assert "probed:" in text and "food" in text
-    assert "admitted (high >= low)" in text
-    assert "1 page(s)" in text
+    assert "probed:" in text
+    assert "pulled from the wiki:" in text
+    assert "food.md" in text                 # the file, as you'd browse it in kainome/
+    assert "phrased from 1 page(s)" in text
 
 
 def test_fast_panel_before_first_lookup():
