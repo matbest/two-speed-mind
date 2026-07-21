@@ -8,6 +8,7 @@ Usage:
     python -m kaineros.evals            # cloud models (spends tokens; needs the [cloud] extra)
     python -m kaineros.evals --fakes    # free smoke run on the fakes (expect failures)
     python -m kaineros.evals --only berlin   # scenarios whose name contains "berlin"
+    python -m kaineros.evals --corpus conflicts --metrics   # scorecard: AA / CRS / SEH / lag / cost
 
 Not part of pytest — pytest stays free and deterministic on the fakes.
 """
@@ -54,16 +55,18 @@ def build_session(fakes: bool, openrouter: bool = False, free: bool = False) -> 
         fast = FREE_FAST_MODEL if free else FAST_MODEL
         ensure_key()
         preflight(fast)
-        session = Session(
-            judge=OpenRouterJudge(deep),
-            slow=OpenRouterSlowModel(deep),
-            fast=OpenRouterFastModel(fast),
-        )
+        session = Session()  # metered adapters so --metrics can report token cost
+        session.compiler.judge = OpenRouterJudge(deep, meter=session.deep_meter)
+        session.slow = OpenRouterSlowModel(deep, meter=session.deep_meter)
+        session.runtime.model = OpenRouterFastModel(fast, meter=session.fast_meter)
     else:
         from .cloud import CloudFastModel, CloudJudge, CloudSlowModel, preflight
 
         preflight()
-        session = Session(judge=CloudJudge(), slow=CloudSlowModel(), fast=CloudFastModel())
+        session = Session()
+        session.compiler.judge = CloudJudge(meter=session.deep_meter)
+        session.slow = CloudSlowModel(meter=session.deep_meter)
+        session.runtime.model = CloudFastModel(meter=session.fast_meter)
     session.cloud = True
     return session
 
@@ -108,6 +111,104 @@ def run_scenario(
     return results
 
 
+def _correct(resp, kws, absent) -> bool:
+    ans = resp.answer.lower()
+    return (not resp.abstained) and all(k in ans for k in kws) and all(a not in ans for a in absent)
+
+
+def _lag(scenario, fakes, openrouter, free, cap=8):
+    """Displacement lag: housekeeping passes until the right answer is served (spec §6 cost).
+
+    Insert every turn's candidates at once, then count passes until the probe is correct — for a
+    contested update the newcomer must win the pairwise contest, which takes >1 pass.
+    """
+    s = build_session(fakes, openrouter, free)
+    users = [Turn(text=t, speaker="user", created_at=time.time()) for t in scenario["turns"]]
+    for c in s.slow.extract(users):
+        s.compiler.insert(c)
+    exp = next((e for e in scenario.get("expect", []) if "question" in e), None)
+    if exp is None:
+        return None
+    kws = [k.lower() for k in exp["keywords"]]
+    absent = [a.lower() for a in exp.get("absent", [])]
+    for n in range(1, cap + 1):
+        s.compiler.housekeep()
+        if _correct(s.runtime.respond(exp["question"], []), kws, absent):
+            return n
+    return None  # never settled within the cap
+
+
+def score_scenario(scenario, fakes=False, openrouter=False, free=False) -> dict:
+    """A metric row for one scenario: AA, retrieval-hit, conflict recognition, cost, lag."""
+    ctype = scenario.get("conflict_type")
+    s = build_session(fakes, openrouter, free)
+    for text in scenario["turns"]:
+        s.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
+        s.consolidate()
+    for _ in range(s.compiler.promote_after):
+        s.compiler.housekeep()
+
+    contested = any(len(pool) > 1 for pool in s.store.pool.values())
+    recognized = bool(s.store.questions) or contested  # queued a question, or a pool defended
+    aa = seh = probes = 0
+    for exp in scenario.get("expect", []):
+        if "question" not in exp:
+            continue
+        probes += 1
+        kws = [k.lower() for k in exp["keywords"]]
+        absent = [a.lower() for a in exp.get("absent", [])]
+        resp = s.runtime.respond(exp["question"], [])
+        aa += _correct(resp, kws, absent)
+        seh += any(all(k in p.content.lower() for k in kws) for p in resp.used)  # gold page pulled
+
+    row = {
+        "name": scenario["name"],
+        "type": ctype,
+        "aa": aa / probes if probes else None,
+        "seh": seh / probes if probes else None,
+        "deep_tok": s.deep_meter.total,
+        "fast_tok": s.fast_meter.total,
+    }
+    if ctype == "static":
+        # CRS is the benchmark's static-conflict metric — did it NOTICE the contradiction rather
+        # than answer right by luck? The field's ceiling here is ~0.25.
+        row["crs"] = 1.0 if recognized else 0.0
+    if ctype in ("static", "dynamic"):
+        row["lag"] = _lag(scenario, fakes, openrouter, free)
+    if ctype == "conditional":
+        row["false_q"] = len(s.store.questions)  # a question here is a FALSE positive; lower better
+    return row
+
+
+def run_metrics(scenarios, fakes, openrouter, free, out=print) -> None:
+    backend = "fakes" if fakes else ("openrouter free" if free else ("openrouter" if openrouter else "cloud"))
+    out(f"=== METRICS (backend: {backend}) ===")
+    out("AA=answer accuracy  SEH=gold page retrieved  CRS=conflict recognised  lag=passes to settle\n")
+    rows = [score_scenario(s, fakes, openrouter, free) for s in scenarios]
+    for r in rows:
+        parts = [f"AA {r['aa']:.2f}" if r["aa"] is not None else "AA n/a"]
+        parts.append(f"SEH {r['seh']:.2f}" if r["seh"] is not None else "SEH n/a")
+        if "crs" in r:
+            parts.append(f"CRS {r['crs']:.2f}")
+        if r.get("lag") is not None:
+            parts.append(f"lag {r['lag']}")
+        if "false_q" in r:
+            parts.append(f"false-Q {r['false_q']}")
+        parts.append(f"cost {r['deep_tok']:,}+{r['fast_tok']:,} tok")
+        out(f"[{r.get('type') or 'plain'}] {r['name']}")
+        out("   " + " | ".join(parts))
+    aas = [r["aa"] for r in rows if r["aa"] is not None]
+    crss = [r["crs"] for r in rows if "crs" in r]
+    deep = sum(r["deep_tok"] for r in rows)
+    fast = sum(r["fast_tok"] for r in rows)
+    out("")
+    out(f"overall: AA {sum(aas)/len(aas):.2f}" if aas else "overall: AA n/a")
+    if crss:
+        out(f"         CRS {sum(crss)/len(crss):.2f} on static conflict (recognition) "
+            "- the field's benchmarked ceiling is ~0.25")
+    out(f"         cost {deep:,} deep + {fast:,} fast tokens total")
+
+
 def main(argv: list[str] | None = None) -> int:
     try:  # Windows consoles default to cp1252; model output is unicode
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -140,6 +241,10 @@ def main(argv: list[str] | None = None) -> int:
         except RuntimeError as exc:
             print(f"error: {exc}")
             return 1
+
+    if "--metrics" in args:
+        run_metrics(scenarios, fakes, openrouter, free)
+        return 0
 
     backend = (
         "fakes" if fakes

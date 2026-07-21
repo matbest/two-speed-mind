@@ -9,6 +9,7 @@
 
 [[scenario]]
 name = "static - a stray contradiction must not overwrite a stable fact"
+conflict_type = "static"
 turns = [
     "I was born in Boston.",
     "Boston born and raised - my whole family is from there.",
@@ -22,6 +23,7 @@ question = "Where was I born?"
 
 [[scenario]]
 name = "dynamic - a real update should win once it settles"
+conflict_type = "dynamic"
 turns = [
     "I live in New York.",
     "Loving the New York winters - cold but bright.",
@@ -34,6 +36,7 @@ question = "Which city do I live in now?"
 
 [[scenario]]
 name = "conditional - two preferences, each valid in its own context"
+conflict_type = "conditional"
 turns = [
     "In the morning I always drink coffee.",
     "In the evening I switch to a glass of milk.",
