@@ -91,11 +91,22 @@ def _request(path: str, body: dict | None = None) -> dict:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
                 data = json.load(r)
         except urllib.error.HTTPError as exc:
+            body = exc.read().decode(errors="replace")
+            if exc.code == 429 and (
+                exc.headers.get("X-RateLimit-Remaining") == "0" or "per-day" in body
+            ):
+                # a daily/hard limit won't recover in seconds — fail fast with a way forward,
+                # don't sit through the retry backoff
+                raise RuntimeError(
+                    "OpenRouter free-tier daily limit reached. Options: run `kaineros` "
+                    "(offline fakes, no network), `kaineros --openrouter` (paid models), set "
+                    "KAINEROS_FREE_DEEP / KAINEROS_FREE_FAST to other free models, or wait for "
+                    "the daily reset (UTC midnight)."
+                ) from exc
             if exc.code in (429, 500, 502, 503) and backoff is not None:
-                time.sleep(backoff)  # free-tier rate limits are the common case here
+                time.sleep(backoff)  # a transient per-minute limit — worth a short wait
                 continue
-            detail = exc.read().decode(errors="replace")[:300]
-            raise RuntimeError(f"openrouter {exc.code}: {detail}") from exc
+            raise RuntimeError(f"openrouter {exc.code}: {body[:300]}") from exc
         except (urllib.error.URLError, TimeoutError) as exc:  # network drop / request timeout
             if backoff is not None:
                 time.sleep(backoff)
