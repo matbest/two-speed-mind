@@ -263,7 +263,12 @@ def main(argv: list[str] | None = None) -> int:
         mind = args[args.index("--mind") + 1]
 
     console = None
+    vt_ok = False
     if not plain:
+        # VT mode must be on BEFORE rich builds its Console: otherwise rich decides this is a
+        # legacy Windows console and renders via a path whose captured output can't be replayed
+        # into the pinned header
+        vt_ok = _enable_vt()
         try:
             from rich.console import Console
 
@@ -309,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as exc:
         print(f"error: {exc}")
         return 1
-    pinned = console is not None and _enable_vt()
+    pinned = console is not None and vt_ok and not console.legacy_windows
     if pinned:
         _enter_cockpit_screen(console, session)
     if session.cloud:
