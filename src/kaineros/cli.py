@@ -59,8 +59,11 @@ class Session:
     def consolidate(self) -> list[Page]:
         """Run the slow brain over the un-compiled tail only (exactly-once), then housekeep."""
         fresh = self.buffer[self.compiled_upto :]
+        candidates = self.slow.extract(fresh)
+        # marker advances only after extraction succeeds: a failed/cancelled call must not lose
+        # the turns. A re-run may re-extract (at-least-once); housekeeping's dedup merges that.
         self.compiled_upto = len(self.buffer)
-        for cand in self.slow.extract(fresh):
+        for cand in candidates:
             self.compiler.insert(cand)
         promoted = self.compiler.housekeep()
         self.compiler.last_report.backlog = self.backlog()
@@ -76,6 +79,39 @@ class Session:
     def forget(self) -> None:
         self.buffer.clear()
         self.compiled_upto = 0
+
+
+def _timed(fn, show: bool):
+    """Run `fn` while showing an elapsed-seconds indicator; Ctrl+C cancels the wait.
+
+    The work runs in a daemon thread so the main thread stays responsive to Ctrl+C. On cancel
+    the in-flight call is abandoned (its result discarded); the session stays usable.
+    """
+    if not show:
+        return fn()
+    import threading
+
+    outcome: dict = {}
+
+    def work():
+        try:
+            outcome["value"] = fn()
+        except BaseException as exc:  # delivered to the caller below
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=work, daemon=True)
+    start = time.time()
+    worker.start()
+    try:
+        while worker.is_alive():
+            worker.join(0.25)
+            if worker.is_alive():
+                print(f"\r  thinking... {time.time() - start:3.0f}s  (Ctrl+C to cancel)", end="", flush=True)
+    finally:
+        print("\r" + " " * 45 + "\r", end="", flush=True)
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["value"]
 
 
 def _print_cockpit(console, session: Session) -> None:
@@ -230,7 +266,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  unknown command: {cmd}  (try /help)")
             continue
 
-        resp = session.turn(line)
+        try:
+            resp = _timed(lambda: session.turn(line), show=sys.stdout.isatty())
+        except KeyboardInterrupt:
+            print("\n  (cancelled - that turn was abandoned; it will be re-read next time)")
+            continue
+        except RuntimeError as exc:
+            print(f"  [model error: {exc}]")
+            continue
         if console is not None:
             _print_cockpit(console, session)
         print("mind> " + resp.answer)

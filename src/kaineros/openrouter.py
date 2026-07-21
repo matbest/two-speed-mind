@@ -43,6 +43,8 @@ FAST_MODEL = os.environ.get("OPENROUTER_FAST_MODEL", "anthropic/claude-haiku-4.5
 FREE_DEEP_MODEL = os.environ.get("KAINEROS_FREE_DEEP", "nvidia/nemotron-3-super-120b-a12b:free")
 FREE_FAST_MODEL = os.environ.get("KAINEROS_FREE_FAST", "nvidia/nemotron-3-nano-30b-a3b:free")
 _KEY_FILE = Path(__file__).resolve().parents[2] / ".openrouter_key"
+# per-request ceiling (seconds); retries add up to ~50s of backoff on top of this
+TIMEOUT = float(os.environ.get("KAINEROS_TIMEOUT", "120"))
 
 
 def _key() -> str:
@@ -85,7 +87,7 @@ def _request(path: str, body: dict | None = None) -> dict:
             headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=180) as r:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
                 data = json.load(r)
         except urllib.error.HTTPError as exc:
             if exc.code in (429, 500, 502, 503) and backoff is not None:
@@ -93,6 +95,11 @@ def _request(path: str, body: dict | None = None) -> dict:
                 continue
             detail = exc.read().decode(errors="replace")[:300]
             raise RuntimeError(f"openrouter {exc.code}: {detail}") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:  # network drop / request timeout
+            if backoff is not None:
+                time.sleep(backoff)
+                continue
+            raise RuntimeError(f"openrouter unreachable: {exc}") from exc
         if isinstance(data, dict) and data.get("error"):
             code = data["error"].get("code") if isinstance(data["error"], dict) else None
             # OpenRouter reports upstream throttling/saturation in the body, not the HTTP status
