@@ -11,9 +11,11 @@ Models: OPENROUTER_DEEP_MODEL / OPENROUTER_FAST_MODEL env vars override the defa
 """
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import re
+import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -48,6 +50,26 @@ def _key() -> str:
             ".openrouter_key file at the repo root (git-ignored)"
         )
     return key
+
+
+def ensure_key() -> None:
+    """First-run UX: no key configured and we're at a terminal → ask once, save, move on.
+
+    The key is read with hidden input and written to the git-ignored key file, so the next run
+    doesn't ask. Non-interactive contexts (pipes, scripts) keep the clear hard error instead.
+    """
+    try:
+        _key()
+        return
+    except RuntimeError:
+        if not sys.stdin.isatty():
+            raise
+    print("First run with OpenRouter - paste your API key (from openrouter.ai/keys).")
+    key = getpass.getpass("OpenRouter API key (input hidden): ").strip()
+    if not key:
+        raise RuntimeError("no key entered")
+    _KEY_FILE.write_text(key + "\n")
+    print(f"  saved to {_KEY_FILE} (git-ignored); delete that file to forget it")
 
 
 def _request(path: str, body: dict | None = None) -> dict:

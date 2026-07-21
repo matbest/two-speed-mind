@@ -37,9 +37,11 @@ def build_session(fakes: bool, openrouter: bool = False) -> Session:
             OpenRouterFastModel,
             OpenRouterJudge,
             OpenRouterSlowModel,
+            ensure_key,
             preflight,
         )
 
+        ensure_key()
         preflight()
         session = Session(
             judge=OpenRouterJudge(), slow=OpenRouterSlowModel(), fast=OpenRouterFastModel()

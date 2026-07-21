@@ -167,9 +167,11 @@ def main(argv: list[str] | None = None) -> int:
                 OpenRouterFastModel,
                 OpenRouterJudge,
                 OpenRouterSlowModel,
+                ensure_key,
                 preflight,
             )
 
+            ensure_key()
             preflight()
             session = Session(
                 judge=OpenRouterJudge(), slow=OpenRouterSlowModel(), fast=OpenRouterFastModel()
