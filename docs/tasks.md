@@ -107,11 +107,25 @@ genes whose pages state one claim merge into the older key; their candidates the
 pool; unrelated pages do *not* merge; nothing merges while the duplicates are still unpromoted
 (fusion only reads the clean layer).
 
-## Slice 5 — the real model (last)
+## Slice 5 — real models (last; adapters only)
 
-**T9.** Add `twospeed/local.py`: `LocalJudge` / `LocalFastModel` / `LocalSlowModel` behind the same
-Protocols, backed by a local model (e.g. `llama-cpp-python` + a small GGUF). Put it behind the
-`local` optional dependency. The core and all Slice 1–4 tests keep passing untouched.
+**T9a. Cloud adapter (first).** Add `twospeed/cloud.py`: `CloudJudge` / `CloudSlowModel` /
+`CloudFastModel` behind the same Protocols, on the Claude API (`anthropic` package, behind the
+`cloud` optional dependency: `pip install -e ".[cloud]"`; auth via `ANTHROPIC_API_KEY`). Deep roles
+(extract + the three judge questions) default to `claude-opus-4-8`; the fast phraser to
+`claude-haiku-4-5`. Judge calls are **forced-choice** — the model answers only A-or-B / yes-or-no
+via structured outputs, never parsed prose (the grounding rule extends to the model boundary); keep
+judge prompts tiny, they run pairwise in housekeeping. `extract` fills a Candidate JSON schema
+(structured outputs). `twospeed --cloud` runs the chat on cloud models; the core and every Slice
+1–4 test stay on the fakes, untouched. Add `/model deep|fast [name]` (arguments-first, numbered
+picker as fallback); the cloud model list comes from the Models API. Purpose: test the
+*architecture* against strong models — if it misbehaves here the design is wrong, not the model.
+
+**T9b. Local adapter.** Add `twospeed/local.py`: `LocalJudge` / `LocalFastModel` / `LocalSlowModel`
+backed by a local model (e.g. `llama-cpp-python` + a small GGUF) behind the `local` optional
+dependency. Same Protocols; nothing else changes. `/model`'s local list comes from Ollama
+(`/api/tags`) or a curated `models.toml`. If quality drops vs the cloud run, the delta is the
+model, not the design — that comparison is the point of doing cloud first.
 
 ## Later (from the paper's §9 — not yet)
 

@@ -17,8 +17,12 @@ This prototype proves the *architecture* — with the model faked — as a comma
 
 ## Non-goals (for the prototype)
 
-- A real/fast/high-quality local LLM (added last, as an adapter).
-- Multi-user, networking, persistence beyond a simple store, a GUI.
+- Real models in the core. Models arrive **last, as adapters** behind the Protocols — a **cloud
+  adapter** first (Claude API: prove the architecture with strong models before local quantisation
+  adds its own noise), then the **local** adapter. Either brain can run on either; the core and the
+  tests depend on neither.
+- Multi-user, networking (beyond the cloud adapter's API calls), persistence beyond a simple store,
+  a GUI.
 - The resource governor / scheduling (stubbed; single-threaded is fine for v1).
 
 ## Acceptance criteria (these become tests)

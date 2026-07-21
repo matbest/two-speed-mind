@@ -7,6 +7,8 @@ Implement per docs/tasks.md T2-T4. Tests: tests/test_store.py.
 """
 from __future__ import annotations
 
+import time
+
 from .interfaces import Judge
 from .schema import Candidate, Page
 from .store import Store
@@ -28,7 +30,15 @@ class Compiler:
 
         See docs/tasks.md T2, T3.
         """
-        raise NotImplementedError("T2/T3: implement ranked insertion (incumbent defends; losers survive)")
+        pool = self.store.pool.setdefault(candidate.gene, [])
+        lo, hi = 0, len(pool)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if self.judge.better(candidate.gene, candidate, pool[mid]):
+                hi = mid
+            else:
+                lo = mid + 1
+        pool.insert(lo, candidate)
 
     def housekeep(self) -> list[Page]:
         """One maintenance pass. For each gene, the top candidate accrues a 'win'; once it has held
@@ -37,4 +47,23 @@ class Compiler:
 
         See docs/tasks.md T4.
         """
-        raise NotImplementedError("T4: implement promotion after the stability threshold")
+        promoted: list[Page] = []
+        for gene, pool in self.store.pool.items():
+            if not pool:
+                continue
+            top = pool[0]
+            top.wins += 1
+            for challenger in pool[1:]:
+                challenger.wins = 0  # the streak is consecutive passes at #1
+            page = self.store.clean.get(gene)
+            if top.wins >= self.promote_after and (page is None or page.content != top.content):
+                history = page.rank_history if page else []
+                new_page = Page(
+                    gene=gene,
+                    content=top.content,
+                    provenance=top.provenance,
+                    rank_history=history + [{"at": time.time(), "event": "promoted"}],
+                )
+                self.store.clean[gene] = new_page
+                promoted.append(new_page)
+        return promoted

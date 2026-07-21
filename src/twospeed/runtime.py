@@ -7,9 +7,15 @@ Implement per docs/tasks.md T5-T6. Tests: tests/test_runtime.py.
 """
 from __future__ import annotations
 
+import re
+
 from .interfaces import FastModel
 from .schema import Page, Response, Turn
 from .store import Store
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
 
 CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
 
@@ -33,4 +39,26 @@ class Runtime:
 
         See docs/tasks.md T5, T6.
         """
-        raise NotImplementedError("T5/T6: implement retrieval, abstention, and the reason/words split")
+        floor = CONFIDENCE_ORDER[self.confidence_floor]
+        terms = _tokens(question)
+        used: list[Page] = []
+        for page in self.store.pages():
+            if not terms & _tokens(page.gene + " " + page.content):
+                continue
+            if CONFIDENCE_ORDER[page.provenance.confidence] < floor:
+                continue
+            used.append(page)
+        if not used:
+            return Response(
+                answer="I don't know.",
+                why=f"abstained: no page matched above the '{self.confidence_floor}' confidence floor",
+                used=[],
+                abstained=True,
+            )
+        answer = self.model.answer(question, used, buffer or [])
+        why = "; ".join(
+            f"page '{p.gene}' ({'stated' if p.provenance.stated else 'inferred'}, "
+            f"confidence {p.provenance.confidence})"
+            for p in used
+        )
+        return Response(answer=answer, why=why, used=used, abstained=False)

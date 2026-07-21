@@ -83,8 +83,17 @@ Everything is tested against **deterministic fakes** (`twospeed/fakes.py`):
   independently of the words).
 - `FakeSlowModel` — one candidate per turn, deterministic.
 
-A real local model (llama.cpp via `llama-cpp-python`, or an HF pipeline) is the **last** task: a
-`LocalJudge` / `LocalFastModel` adapter behind the same interfaces. The core never imports it.
+Real models are the **last** task, as adapters behind the same interfaces — the core never imports
+them. Two families, cloud first:
+
+- **cloud.py** (`cloud` optional dependency → `anthropic`): `CloudJudge` / `CloudSlowModel` /
+  `CloudFastModel` on the Claude API. Deep roles (extractor + judge) default to `claude-opus-4-8`;
+  the fast phraser to `claude-haiku-4-5` — the two-speed split maps directly onto model tiers, and
+  the phraser can be tiny *because it only phrases*. Judge calls are forced-choice (structured
+  output, never parsed prose); `extract` fills a Candidate JSON schema. Auth via
+  `ANTHROPIC_API_KEY`. The `/model` picker's cloud list comes from the Models API.
+- **local.py** (`local` optional dependency): llama.cpp via `llama-cpp-python` + a small GGUF (or
+  an HF pipeline), same Protocols — added once the cloud adapter has proven the architecture.
 
 ## Build order
 
