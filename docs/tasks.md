@@ -182,6 +182,18 @@ flips to off-device when an off-device tool is enabled; a malformed proposal is 
 executed. Real tools (filesystem, shell, web) come after, one at a time, each declaring its
 locality honestly.
 
+## Token-cost debt (revisit — flagged 2026-07-21)
+
+**Conflict detection is O(pages²) deep-model calls per pass.** Slice 9's `_curate` compares every
+pair of promoted pages with `conflicts` (on top of fusion's existing pairwise `same_claim` sweep),
+so deep-brain token spend grows quadratically with the wiki — against the goal of *reducing* tokens
+and judging local feasibility. Same debt applies to fusion. Cheaper approaches to weigh when we
+return: only compare **newly-promoted/changed** pages against the rest (O(changed·N), not O(N²));
+**cache** verdicts keyed by (content_a, content_b); scope comparisons to **related genes** (shared
+key prefix, e.g. `user.job.*`); **gate by stakes**; or fold conflict/claim detection into the
+**extractor pass that already runs** instead of a separate sweep. No change yet — noted so the
+token budget isn't quietly blown as wikis grow.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'
