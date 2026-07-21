@@ -8,6 +8,7 @@ Implement per docs/tasks.md T5-T6. Tests: tests/test_runtime.py.
 from __future__ import annotations
 
 import re
+import time
 
 from .interfaces import FastModel
 from .schema import Lookup, LookupHit, Page, Response, Turn
@@ -18,13 +19,32 @@ def _tokens(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", text.lower()))
 
 CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
+HEDGE_PREFIX = "If I remember rightly: "
 
 
 class Runtime:
-    def __init__(self, store: Store, model: FastModel, confidence_floor: str = "low") -> None:
+    def __init__(
+        self,
+        store: Store,
+        model: FastModel,
+        confidence_floor: str = "low",
+        stale_after: float = 30 * 24 * 3600.0,
+    ) -> None:
         self.store = store
         self.model = model
         self.confidence_floor = confidence_floor
+        self.stale_after = stale_after
+
+    def _hedge_reason(self, page: Page, now: float) -> str | None:
+        """Why this page can't be asserted plainly — from provenance, never from prose (spec §6)."""
+        prov = page.provenance
+        if not prov.stated:
+            return "inferred"
+        if prov.confidence == "low":
+            return "low confidence"
+        if now - prov.created_at > self.stale_after:
+            return "stale"
+        return None
 
     def respond(self, question: str, buffer: list[Turn] | None = None) -> Response:
         """Answer `question` from the clean layer.
@@ -66,9 +86,14 @@ class Runtime:
                 trace=trace,
             )
         answer = self.model.answer(question, used, buffer or [])
+        now = time.time()
+        reasons = {p.gene: self._hedge_reason(p, now) for p in used}
+        if any(reasons.values()):
+            # hedge decided by state; the model's words are only prefixed, never consulted
+            answer = HEDGE_PREFIX + answer
         why = "; ".join(
             f"page '{p.gene}' ({'stated' if p.provenance.stated else 'inferred'}, "
-            f"confidence {p.provenance.confidence})"
+            f"confidence {p.provenance.confidence}, {reasons[p.gene] or 'fresh'})"
             for p in used
         )
         return Response(answer=answer, why=why, used=used, abstained=False, trace=trace)

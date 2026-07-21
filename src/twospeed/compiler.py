@@ -41,10 +41,17 @@ class Compiler:
 
         Deliberately cheap: no identity checks here — repair work belongs to housekeep (spec §11).
 
-        See docs/tasks.md T2, T3.
+        Low-stakes candidates (persona/style — spec §4) skip judging entirely: the newest account
+        goes straight to the top, because for style recency *is* the right answer, and trivia is
+        not worth judge calls.
+
+        See docs/tasks.md T2, T3, T8.
         """
         pool = self.store.pool.setdefault(candidate.gene, [])
-        self._place(candidate.gene, pool, candidate)
+        if candidate.provenance.stakes == "low":
+            pool.insert(0, candidate)
+        else:
+            self._place(candidate.gene, pool, candidate)
         self._inserted_since_pass += 1
 
     def housekeep(self) -> list[Page]:
@@ -69,7 +76,8 @@ class Compiler:
             for challenger in pool[1:]:
                 challenger.wins = 0  # the streak is consecutive passes at #1
             page = self.store.clean.get(gene)
-            if top.wins >= self.promote_after and (page is None or page.content != top.content):
+            threshold = 0 if top.provenance.stakes == "low" else self.promote_after
+            if top.wins >= threshold and (page is None or page.content != top.content):
                 history = page.rank_history if page else []
                 new_page = Page(
                     gene=gene,

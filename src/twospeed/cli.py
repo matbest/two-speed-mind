@@ -10,6 +10,7 @@ tail is handed to the slow model — a turn is extracted exactly once, ever.
 from __future__ import annotations
 
 import sys
+import time
 
 from .compiler import Compiler
 from .fakes import FakeFastModel, FakeJudge, FakeSlowModel
@@ -64,7 +65,7 @@ class Session:
         return promoted
 
     def turn(self, text: str) -> Response:
-        self.buffer.append(Turn(text=text, speaker="user"))
+        self.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
         self.consolidate()
         resp = self.runtime.respond(text, self.buffer)
         self.last_response = resp

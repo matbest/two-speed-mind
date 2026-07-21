@@ -44,6 +44,8 @@ you talk ─► short-term buffer ───────────────�
 - **compiler.py** — `Compiler(store, judge, promote_after=3, split_after=8)` (slow-deep):
   - `insert(candidate)` — binary-insert into the gene's pool by the judge; incumbent defends.
     Deliberately cheap (~log n comparisons, no identity checks) — repair work belongs to housekeep.
+    Low-stakes candidates (spec §4) skip judging entirely: newest straight to #1, promoted next
+    pass.
   - `housekeep() -> list[Page]` — the slow brain's maintenance pass, in order (order matters —
     each step keeps the next step's signal honest): **dedup** each pool (Slice 4.5: merge
     `same_account` candidates into the best-ranked; receipts accumulate, `created_at` refreshes,
@@ -53,10 +55,12 @@ you talk ─► short-term buffer ───────────────�
     survives, pools re-insert, pages retire); **promotion** (any gene whose top has held #1 for
     `promote_after` passes).
 
-- **runtime.py** — `Runtime(store, fast_model, confidence_floor="low")` (fast):
+- **runtime.py** — `Runtime(store, fast_model, confidence_floor="low", stale_after=30d)` (fast):
   - `respond(question, buffer=None) -> Response` — retrieve pages above the floor; abstain if none;
     else phrase via the fast model. `why` and `trace` are built from the retrieved pages' genes +
-    provenance.
+    provenance. **Hedging is state-driven** (spec §6): if any used page is inferred, low-confidence,
+    or older than `stale_after`, the runtime prefixes the answer as memory ("If I remember
+    rightly:") and the `why` labels each page fresh or stale — the model never decides the hedge.
 
 - **view.py** — pure renderers (state in, text/renderables out — no I/O, no model): the
   **deep-brain panel** (a `CompileReport` + the store: last pass's tallies, backlog, population

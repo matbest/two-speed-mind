@@ -36,7 +36,11 @@ This prototype proves the *architecture* — with the model faked — as a comma
 3. A new candidate is placed by **binary insertion**; the current top must be *beaten* to be
    displaced (the incumbent defends its position).
 4. A candidate is **promoted** to the clean layer only once it has held the top rank across
-   `promote_after` passes. A promoted entry is a **page**.
+   `promote_after` passes. A promoted entry is a **page**. That competition is for **high-stakes**
+   facts. Low-stakes facts (persona/style) skip it entirely: insertion makes no judge calls (the
+   newest account goes straight to the top — for style, recency *is* the right answer) and the top
+   promotes on the next pass. Trivia is not worth judgment, but it still carries provenance and is
+   served like any page.
 5. A beaten candidate is **not destroyed** — it drops back in the pool and can win again later.
 6. **Claims drift, so time is evidence.** Every fact is timestamped: `created_at` travels in
    provenance, and every promotion appends a timestamped entry to the page's `rank_history`. The
