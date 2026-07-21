@@ -88,6 +88,7 @@ class CompileReport:
     fused: int = 0                      # fusions (Slice 4.5)
     promoted: int = 0                   # pages promoted this pass
     backlog: int = 0                    # turns awaiting compilation (set by the session)
+    error: str | None = None            # a failed background pass reports here (spec §26)
 
 
 @dataclass

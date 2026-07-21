@@ -154,4 +154,28 @@ This prototype proves the *architecture* — with the model faked — as a comma
     broken file is the user's decision. `/forget` still clears only the buffer (context, not
     memory — §17); **`/forget all`** erases the persisted mind, after an explicit confirmation.
 
+**Background consolidation (the slow brain gets off the interactive path)**
+24. **Answers never wait for the slow brain.** A turn is: buffer the text, answer immediately from
+    the pages that exist right now, and leave compilation to a background worker. The two speeds
+    finally run at two speeds. The cost is honest and already accepted (§17): a fact you just
+    stated is answerable only once the worker has landed it — the backlog count in the deep-brain
+    panel is now real.
+25. The **buffer + compiled marker is the work queue** (§17 unchanged): the worker drains the
+    un-compiled tail — extract, insert, housekeep, save — and advances the marker only on
+    success, so a failed or interrupted pass never loses turns (at-least-once; §11's dedup merges
+    any re-extraction). One worker; passes never overlap; a fresh turn during a pass is picked up
+    in the next one.
+26. **Failure is visible, never fatal**: a failing pass leaves the marker where it was, retries
+    with backoff (bounded — then waits for the next turn to re-wake it), and reports the error in
+    the compile report, which the deep-brain panel shows. The interactive path is unaffected
+    throughout.
+27. Reads stay honest under concurrency: retrieval reads an atomic **snapshot** of the clean
+    layer (pages are replaced, never mutated in place), so an answer is always phrased from a
+    consistent set of pages — never from a half-finished housekeeping pass. When a background
+    pass lands, the pinned cockpit header repaints (the answer didn't wait; the panels catch up).
+    **Deterministic mode remains the default** for tests and evals: `Session(background=False)`
+    consolidates synchronously, exactly as before; only the chat app opts into the worker. On
+    quit with a non-empty backlog, the app drains it (briefly, with a message) so said-but-not-
+    yet-compiled turns aren't lost with the process.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

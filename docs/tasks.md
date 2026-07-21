@@ -143,6 +143,20 @@ the second); each promoted page is its own `kainome/<gene>.json` and a retired p
 disappears on the next save; a corrupt `pool.json` raises with a clear message rather than
 starting empty; `store_dir=None` touches no disk (the whole existing suite is the proof).
 
+## Slice 7 — background consolidation  ·  `tests/test_background.py` (you add)
+
+**T11. The slow brain gets off the interactive path.** Spec §24–27. `Session(background=True)`
+starts one daemon worker; `turn()` buffers, wakes the worker, and responds immediately from the
+current pages. The worker drains the un-compiled tail (marker advances on success only —
+at-least-once, dedup cleans up), holds the write lock for mutations but never during model calls
+it doesn't need to, saves after each pass, sets `CompileReport.error` on failure (bounded retries,
+then wait for the next wake), and fires an `on_compiled` callback (the CLI repaints the pinned
+header). `flush(timeout)` drains the backlog (the CLI calls it on quit if needed). Default stays
+synchronous — the whole existing suite is the proof. Tests to write (event-driven, no sleeps): a
+turn returns while extraction is still blocked (backlog visible, then flush lands the fact); every
+turn extracted exactly once across several background passes; a failing extraction loses nothing
+(error lands in the report, retry succeeds, marker catches up); the deep panel shows the failure.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

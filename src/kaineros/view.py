@@ -16,14 +16,15 @@ def deep_panel(report: CompileReport, store: Store) -> str:
     """
     genes = store.genes()
     n_candidates = sum(len(store.candidates(g)) for g in genes)
-    return "\n".join(
-        [
-            f"last pass: {report.inserted} inserted, {report.merged} merged, "
-            f"{report.split} split, {report.fused} fused, {report.promoted} promoted",
-            f"backlog: {report.backlog} turns awaiting compilation",
-            f"wiki: {len(store.clean)} pages · pool: {n_candidates} candidates in {len(genes)} genes",
-        ]
-    )
+    lines = [
+        f"last pass: {report.inserted} inserted, {report.merged} merged, "
+        f"{report.split} split, {report.fused} fused, {report.promoted} promoted",
+        f"backlog: {report.backlog} turns awaiting compilation",
+        f"wiki: {len(store.clean)} pages · pool: {n_candidates} candidates in {len(genes)} genes",
+    ]
+    if report.error:
+        lines.append(f"last pass FAILED: {report.error[:70]} (will retry)")
+    return "\n".join(lines)
 
 
 def fast_panel(trace: Lookup | None, response: Response | None, buffer: list[Turn]) -> str:

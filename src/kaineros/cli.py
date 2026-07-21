@@ -10,13 +10,14 @@ tail is handed to the slow model — a turn is extracted exactly once, ever.
 from __future__ import annotations
 
 import sys
+import threading
 import time
 
 from .compiler import Compiler
 from .fakes import FakeFastModel, FakeJudge, FakeSlowModel
 from .interfaces import FastModel, Judge, SlowModel
 from .runtime import Runtime
-from .schema import Page, Response, Turn
+from .schema import CompileReport, Page, Response, Turn
 from .store import Store
 
 BANNER = (
@@ -44,6 +45,7 @@ class Session:
         slow: SlowModel | None = None,
         fast: FastModel | None = None,
         store_dir: str | None = None,
+        background: bool = False,
     ) -> None:
         self.store_dir = store_dir
         if store is None and store_dir is not None:
@@ -58,17 +60,27 @@ class Session:
         self.compiled_upto = 0  # spec §17: turns before this index have been extracted
         self.last_response: Response | None = None
         self.cloud = False  # set by main() when wired with the cloud adapters
+        # background consolidation (spec §24-27): one daemon worker drains the buffer tail;
+        # concurrency relies on CPython atomics — the worker is the sole store mutator, retrieval
+        # reads atomic snapshots (store.pages()), pages are replaced never mutated in place
+        self.background = background
+        self.on_compiled = None  # callback fired after each background pass (cockpit repaint)
+        self.retry_backoff = 0.5  # base seconds between failed-pass retries (tests shrink it)
+        self._wake = threading.Event()
+        if background:
+            threading.Thread(target=self._worker_loop, daemon=True).start()
 
     def backlog(self) -> int:
         return len(self.buffer) - self.compiled_upto
 
     def consolidate(self) -> list[Page]:
         """Run the slow brain over the un-compiled tail only (exactly-once), then housekeep."""
-        fresh = self.buffer[self.compiled_upto :]
+        upto = len(self.buffer)  # snapshot: turns arriving mid-pass belong to the next pass
+        fresh = self.buffer[self.compiled_upto : upto]
         candidates = self.slow.extract(fresh)
         # marker advances only after extraction succeeds: a failed/cancelled call must not lose
         # the turns. A re-run may re-extract (at-least-once); housekeeping's dedup merges that.
-        self.compiled_upto = len(self.buffer)
+        self.compiled_upto = upto
         for cand in candidates:
             self.compiler.insert(cand)
         promoted = self.compiler.housekeep()
@@ -78,6 +90,40 @@ class Session:
 
             save_store(self.store, self.store_dir)  # spec §22: the mind hits disk every pass
         return promoted
+
+    def _worker_loop(self) -> None:
+        """Drain the un-compiled tail off the interactive path (spec §25-26)."""
+        failures = 0
+        while True:
+            self._wake.wait()
+            self._wake.clear()
+            while self.backlog() > 0:
+                try:
+                    self.consolidate()
+                    failures = 0
+                except Exception as exc:  # marker didn't advance — nothing is lost
+                    failures += 1
+                    self.compiler.last_report = CompileReport(
+                        backlog=self.backlog(), error=str(exc)
+                    )
+                    if self.on_compiled:
+                        self.on_compiled()
+                    if failures >= 3:
+                        break  # park; the next turn (or flush) re-wakes and retries
+                    time.sleep(self.retry_backoff * (2 ** (failures - 1)))
+                    continue
+                if self.on_compiled:
+                    self.on_compiled()
+
+    def flush(self, timeout: float = 60.0) -> bool:
+        """Wait for the backlog to drain; True if it did. No-op when synchronous."""
+        if not self.background:
+            return True
+        deadline = time.time() + timeout
+        while self.backlog() > 0 and time.time() < deadline:
+            self._wake.set()  # re-wakes a worker parked after repeated failures
+            time.sleep(0.05)
+        return self.backlog() == 0
 
     def wipe(self) -> None:
         """Erase the whole mind — buffer, store, and (if persisted) the files on disk."""
@@ -91,7 +137,10 @@ class Session:
 
     def turn(self, text: str) -> Response:
         self.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
-        self.consolidate()
+        if self.background:
+            self._wake.set()  # the answer never waits for the slow brain (spec §24)
+        else:
+            self.consolidate()
         resp = self.runtime.respond(text, self.buffer)
         self.last_response = resp
         return resp
@@ -282,7 +331,11 @@ def main(argv: list[str] | None = None) -> int:
 
             preflight()
             session = Session(
-                judge=CloudJudge(), slow=CloudSlowModel(), fast=CloudFastModel(), store_dir=mind
+                judge=CloudJudge(),
+                slow=CloudSlowModel(),
+                fast=CloudFastModel(),
+                store_dir=mind,
+                background=True,
             )
             session.cloud = True
         elif "--openrouter" in args or "--free" in args:
@@ -307,6 +360,7 @@ def main(argv: list[str] | None = None) -> int:
                 slow=OpenRouterSlowModel(deep),
                 fast=OpenRouterFastModel(fast),
                 store_dir=mind,
+                background=True,
             )
             session.cloud = True
         else:
@@ -317,6 +371,10 @@ def main(argv: list[str] | None = None) -> int:
     pinned = console is not None and vt_ok and not console.legacy_windows
     if pinned:
         _enter_cockpit_screen(console, session)
+        if session.background:
+            # a landed background pass repaints the header in place — the answer didn't wait,
+            # the panels catch up (spec §27)
+            session.on_compiled = lambda: _paint_header(console, session)
     if session.cloud:
         print(f"(models: deep={session.slow.model}, fast={session.runtime.model.model})")
     print(f"(mind: {mind} - {len(session.store.pages())} pages)")
@@ -376,6 +434,13 @@ def main(argv: list[str] | None = None) -> int:
             _print_cockpit(console, session)  # console can't pin: panels print inline
         print("mind> " + resp.answer)
 
+    if session.background and session.backlog() > 0:
+        print(f"(compiling {session.backlog()} remaining turn(s) before quitting...)")
+        try:
+            if not session.flush(timeout=120):
+                print("(some turns could not be compiled - they are lost with this session)")
+        except KeyboardInterrupt:
+            print("(abandoned - un-compiled turns are lost with this session)")
     if pinned:
         _exit_cockpit_screen()
     print("bye.")
