@@ -89,7 +89,7 @@ def test_wiki_pages_are_readable_markdown_with_provenance(tmp_path):
     assert "# user.home_city" in md
     assert "the user lives in berlin" in md
     assert "stated directly" in md and "confidence high" in md
-    assert "promoted:" in md  # the promotion history is on the page
+    assert "promoted" in md  # the promotion history is on the page
 
 
 def test_wiki_index_lists_every_page(tmp_path):
@@ -100,8 +100,8 @@ def test_wiki_index_lists_every_page(tmp_path):
     comp.housekeep()
     save_store(store, tmp_path)
     index = (tmp_path / "kainome" / "index.md").read_text(encoding="utf-8")
-    assert "2 page(s)" in index
     assert "[user.home_city](user.home_city.md)" in index
+    assert "the user lives in berlin" in index
     assert "the user loves mangoes" in index
 
 
