@@ -157,6 +157,31 @@ def _print_cockpit(console, session: Session) -> None:
     console.print(grid)
 
 
+def _enable_vt() -> bool:
+    """Switch the Windows console into VT-escape mode; True if escapes will be honoured.
+
+    Windows Terminal has it on already; classic conhost (plain PowerShell windows) needs
+    SetConsoleMode. Elsewhere (non-Windows) VT is a given.
+    """
+    import os
+
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)  # stdout
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        if mode.value & 0x0004:  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+            return True
+        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x0004))
+    except Exception:
+        return False
+
+
 def _paint_header(console, session: Session) -> None:
     """Repaint the pinned panels in place, leaving the cursor where it was."""
     with console.capture() as cap:
@@ -284,7 +309,8 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as exc:
         print(f"error: {exc}")
         return 1
-    if console is not None:
+    pinned = console is not None and _enable_vt()
+    if pinned:
         _enter_cockpit_screen(console, session)
     if session.cloud:
         print(f"(models: deep={session.slow.model}, fast={session.runtime.model.model})")
@@ -339,11 +365,13 @@ def main(argv: list[str] | None = None) -> int:
         except RuntimeError as exc:
             print(f"  [model error: {exc}]")
             continue
-        if console is not None:
+        if pinned:
             _paint_header(console, session)
+        elif console is not None:
+            _print_cockpit(console, session)  # console can't pin: panels print inline
         print("mind> " + resp.answer)
 
-    if console is not None:
+    if pinned:
         _exit_cockpit_screen()
     print("bye.")
     return 0
