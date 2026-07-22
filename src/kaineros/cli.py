@@ -358,11 +358,17 @@ def _paint_header(console, session: Session) -> None:
 def _enter_cockpit_screen(console, session: Session) -> None:
     """Pin the panels: clear, set the scroll region to the rows BELOW the header (VT DECSTBM) —
     conversation scrolls up and disappears underneath the boxes; the header never moves."""
+    import atexit
+
     rows = console.size.height
     sys.stdout.write("\x1b[2J")                        # clear screen
     sys.stdout.write(f"\x1b[{HEADER_HEIGHT + 1};{rows}r")  # scrolling only below the header
     sys.stdout.write(f"\x1b[{rows};1H")                # cursor to the bottom line
     sys.stdout.flush()
+    # belt-and-braces: a constrained scroll region left behind (crash, window close, kill) makes
+    # the NEXT program's cursor maths go negative and crashes PSReadLine — always restore, even
+    # when the REPL's own try/finally never runs
+    atexit.register(_exit_cockpit_screen)
     _paint_header(console, session)
 
 
