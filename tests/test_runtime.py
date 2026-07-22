@@ -65,13 +65,25 @@ def test_trace_records_blocked_page_and_why():
     assert hit.strength > 0                              # it *did* match; the floor hid it
 
 
-def test_trace_records_admitted_page():
+def test_trace_records_routed_page():
     store, rt = make_runtime()
     put_page(store, "food", "you like apples", confidence="high")
     resp = rt.respond("what food do I like?")
     hit = next(h for h in resp.trace.hits if h.gene == "food")
-    assert hit.decision == "admitted"
+    assert hit.decision == "routed"  # the page the fast brain was routed to (two-step, T16)
     assert resp.trace.abstained is False
+
+
+def test_routing_reads_only_the_top_k_pages():
+    store, rt = make_runtime()
+    rt.route_k = 1
+    put_page(store, "food.love", "you love mangoes", confidence="high")
+    put_page(store, "food.hate", "you hate mangoes actually", confidence="high")
+    resp = rt.respond("mangoes?")
+    assert len(resp.used) == 1  # both matched, but only the top-1 was read
+    decisions = {h.gene: h.decision for h in resp.trace.hits}
+    assert "routed" in decisions.values()
+    assert "matched" in decisions.values()  # the other matched but was NOT read (token saved)
 
 
 def test_abstention_leaves_a_trace_too():

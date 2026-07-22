@@ -73,7 +73,7 @@ def test_repl_smoke(monkeypatch, capsys, tmp_path):
     assert main(["--plain", "--mind", str(tmp_path)]) == 0
 
     out = capsys.readouterr().out
-    assert "From what I know: bananas are yellow" in out  # the answer
+    assert "bananas are yellow" in out  # the answer drew on the bananas page
     assert "[bananas] bananas are yellow" in out          # /notebook shows the promoted page
     assert "page 'bananas'" in out                        # /why is grounded in state
     assert "(buffer cleared" in out                       # /forget

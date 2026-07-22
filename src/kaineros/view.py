@@ -71,14 +71,17 @@ def fast_panel(
         tl = _tokens_line(tokens_total, tokens_hour)
         return head + ("\n" + tl if tl else "")
     lines = [f"probed: {', '.join(trace.query_terms) or '(nothing)'}"]
-    admitted = [h for h in trace.hits if h.decision == "admitted"]
+    routed = [h for h in trace.hits if h.decision == "routed"]
+    matched = [h for h in trace.hits if h.decision == "matched"]  # matched but not read (two-step)
     blocked = [h for h in trace.hits if h.decision == "blocked"]
-    if admitted:
-        lines.append("pulled from the wiki:")
-        for h in admitted:
+    if routed:
+        lines.append("routed to (read by the fast brain):")
+        for h in routed:
             lines.append(f"  {_safe(h.gene)}.md  ({h.strength} hit(s), {h.confidence})")
     else:
-        lines.append("pulled nothing from the wiki")
+        lines.append("routed to nothing in the wiki")
+    for h in matched:  # the index routed past these — saved reading them
+        lines.append(f"  matched, not read: {_safe(h.gene)}.md ({h.strength} hit(s))")
     for h in blocked:
         lines.append(f"  blocked: {_safe(h.gene)}.md ({h.confidence} < {trace.floor} floor)")
     if trace.abstained:

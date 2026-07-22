@@ -43,7 +43,7 @@ def test_fast_panel_marks_blocked_with_the_tier_that_failed():
     resp = rt.respond("what food do I like?")
     text = fast_panel(resp.trace, resp, [])
     assert "blocked: food.md (low < high floor)" in text  # the floor hid it, and says so
-    assert "pulled nothing from the wiki" in text
+    assert "routed to nothing in the wiki" in text
     assert "abstained" in text
 
 
@@ -56,7 +56,7 @@ def test_fast_panel_lists_the_wiki_files_pulled():
     resp = rt.respond("what food do I like?")
     text = fast_panel(resp.trace, resp, [])
     assert "probed:" in text
-    assert "pulled from the wiki:" in text
+    assert "routed to (read by the fast brain):" in text
     assert "food.md" in text                 # the file, as you'd browse it in kainome/
     assert "phrased from 1 page(s)" in text
 

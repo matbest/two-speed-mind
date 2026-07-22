@@ -32,9 +32,20 @@ def _variants(token: str) -> set[str]:
     return out
 
 
+# common function words carry no routing signal — dropping them stops "my"/"is"/"the" from making
+# every page match, so routing keys on the CONTENT words (spec §41: help the fast brain choose)
+_STOPWORDS = frozenset(
+    "i me my mine we our you your he she it its they them their a an the of to in on at for and or "
+    "is are am was were be been being do does did have has had this that these those about with "
+    "from as so just still got what who where when why how which whose whom no not".split()
+)
+
+
 def _tokens(text: str) -> set[str]:
     tokens: set[str] = set()
     for t in re.findall(r"[a-z0-9]+", text.lower()):
+        if t in _STOPWORDS:
+            continue
         tokens |= _variants(t)
     return tokens
 
@@ -49,11 +60,15 @@ class Runtime:
         model: FastModel,
         confidence_floor: str = "low",
         stale_after: float = 30 * 24 * 3600.0,
+        route_k: int = 3,
     ) -> None:
         self.store = store
         self.model = model
         self.confidence_floor = confidence_floor
         self.stale_after = stale_after
+        # two-step retrieval (spec §41, T16): route to the top-K matching pages by the index, then
+        # read only those — the cheap fast brain sees a few pages, not every keyword match.
+        self.route_k = route_k
 
     def _hedge_reason(self, page: Page, now: float) -> str | None:
         """Why this page can't be asserted plainly — from provenance, never from prose (spec §6)."""
@@ -82,20 +97,36 @@ class Runtime:
         floor = CONFIDENCE_ORDER[self.confidence_floor]
         terms = _tokens(question)
         trace = Lookup(query_terms=tuple(sorted(terms)), floor=self.confidence_floor)
-        used: list[Page] = []
+        now = time.time()
+
+        # step 1 — score every page against the index (gene + content cues); classify each
+        matched: list[tuple[Page, int]] = []  # (page, strength) that cleared the floor
+        blocked: list[LookupHit] = []
+        nomatch: list[LookupHit] = []
         for page in self.store.pages():
             strength = len(terms & _tokens(page.gene + " " + page.content))
             confidence = page.provenance.confidence
             if strength == 0:
-                decision = "no match"
+                nomatch.append(LookupHit(page.gene, 0, confidence, "no match"))
             elif CONFIDENCE_ORDER[confidence] < floor:
-                decision = "blocked"
+                blocked.append(LookupHit(page.gene, strength, confidence, "blocked"))
             else:
-                decision = "admitted"
-                used.append(page)
-            trace.hits.append(
-                LookupHit(gene=page.gene, strength=strength, confidence=confidence, decision=decision)
-            )
+                matched.append((page, strength))
+
+        # step 2 — ROUTE: keep only the top-K matches (strongest, then most confident, then
+        # freshest). The cheap fast brain reads these, not every match — the token win.
+        matched.sort(
+            key=lambda ps: (ps[1], CONFIDENCE_ORDER[ps[0].provenance.confidence], ps[0].provenance.created_at),
+            reverse=True,
+        )
+        used = [p for p, _ in matched[: self.route_k]]
+        routed_genes = {p.gene for p in used}
+        for page, strength in matched:
+            decision = "routed" if page.gene in routed_genes else "matched"
+            trace.hits.append(LookupHit(page.gene, strength, page.provenance.confidence, decision))
+        trace.hits.extend(blocked)
+        trace.hits.extend(nomatch)
+
         if not used:
             trace.abstained = True
             return Response(
@@ -106,7 +137,6 @@ class Runtime:
                 trace=trace,
             )
         answer = self.model.answer(question, used, buffer or [])
-        now = time.time()
         reasons = {p.gene: self._hedge_reason(p, now) for p in used}
         if any(reasons.values()):
             # hedge decided by state; the model's words are only prefixed, never consulted
