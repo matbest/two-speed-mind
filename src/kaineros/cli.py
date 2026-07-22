@@ -45,6 +45,13 @@ _Q_WORDS = frozenset(
 )
 
 
+def _prompt(session) -> str:
+    """The input prompt reflects the deep brain's state: 'thinking (N)>' while it still has turns
+    to compile in the background, else 'you>'. The two speeds, visible at the prompt."""
+    n = session.backlog() if session.background else 0
+    return f"thinking ({n})> " if n > 0 else "you> "
+
+
 def _is_question(text: str) -> bool:
     """A cheap intent split: is this turn asking, or just telling? Statements skip retrieval."""
     t = text.strip().lower()
@@ -709,7 +716,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
       while True:
         try:
-            line = input("you> ").strip()
+            line = input(_prompt(session)).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break
