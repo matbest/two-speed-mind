@@ -33,6 +33,7 @@ HELP = (
     "  /model     show or switch models: /model deep|fast [model-id]  (--cloud only)\n"
     "  /profile   list profiles, or /profile <name> to switch (each has its own wiki)\n"
     "  /persona   /persona <name> builds a fresh wiki from a scripted person (watch it grow)\n"
+    "  /metrics   run a conflict-benchmark scenario live and score it (AA/SEH/CRS/cost)\n"
     "  /forget    clear the short-term buffer   (/forget all erases the whole mind)\n"
     "  /quit      exit\n"
 )
@@ -81,6 +82,7 @@ class Session:
         self.fast_meter = TokenMeter()
         self.on_compiled = None  # callback fired after each background pass (cockpit repaint)
         self._asked = None       # the question surfaced last turn, awaiting the user's answer
+        self.running_note = None  # when set, the header shows a "running metric" banner
         self.retry_backoff = 0.5  # base seconds between failed-pass retries (tests shrink it)
         self._wake = threading.Event()
         if background:
@@ -245,8 +247,12 @@ def _print_cockpit(console, session: Session) -> None:
 
     from .view import deep_panel, fast_panel, status_bar
 
-    bar = status_bar(session.backend_label, session.backend_detail, session.offdevice)
-    style = "bold white on red" if session.offdevice else "bold white on green4"
+    if session.running_note:  # a metric is running — the header says so (spec: visible tests)
+        bar = "> RUNNING METRIC - " + session.running_note
+        style = "bold black on yellow"
+    else:
+        bar = status_bar(session.backend_label, session.backend_detail, session.offdevice)
+        style = "bold white on red" if session.offdevice else "bold white on green4"
     line = bar[: console.width].ljust(console.width)  # exactly one full-width row
     console.print(Text(line, style=style), no_wrap=True, overflow="crop")
 
@@ -387,6 +393,104 @@ def _cmd_model(session: Session, args: list[str]) -> None:
     else:
         fast.model = name
     print(f"  {role} -> {name}")
+
+
+def _run_metric_scenario(session: Session, sc: dict, pinned: bool, console, correct) -> None:
+    """One conflict scenario, live: feed it turn by turn, watch the deep brain review it down to
+    zero backlog, then probe and score (AA / SEH / CRS / cost)."""
+    session.wipe()  # fresh slate — the point is to watch this scenario build from nothing
+    ctype = sc.get("conflict_type", "plain")
+    turns = sc["turns"]
+    deep0, fast0 = session.deep_meter.total, session.fast_meter.total
+    print(f"\n== metric: {ctype} - {sc['name']}")
+    for i, text in enumerate(turns, 1):
+        session.running_note = f"{ctype}: feeding turn {i}/{len(turns)}  ({session.backlog()} to review)"
+        if pinned:
+            _paint_header(console, session)
+        print("you> " + text)
+        resp = session.turn(text)
+        print("mind> " + resp.answer)
+        if pinned:
+            _paint_header(console, session)
+    # wait for the deep brain to review everything — the "to review" count drains to zero
+    while session.backlog() > 0:
+        session.running_note = f"{ctype}: reviewing... {session.backlog()} left"
+        if pinned:
+            _paint_header(console, session)
+        session._wake.set()
+        time.sleep(0.3)
+    session.running_note = f"{ctype}: scoring"
+    if pinned:
+        _paint_header(console, session)
+
+    aa = seh = probes = 0
+    for exp in sc.get("expect", []):
+        if "question" not in exp:
+            continue
+        probes += 1
+        kws = [k.lower() for k in exp["keywords"]]
+        absent = [a.lower() for a in exp.get("absent", [])]
+        r = session.runtime.respond(exp["question"], [])
+        ok = correct(r, kws, absent)
+        aa += ok
+        seh += any(all(k in p.content.lower() for k in kws) for p in r.used)
+        print(f"probe: {exp['question']}")
+        print(f"   -> {r.answer}   [{'OK' if ok else 'MISS'}]")
+    recognized = bool(session.store.questions) or any(len(p) > 1 for p in session.store.pool.values())
+    dtok, ftok = session.deep_meter.total - deep0, session.fast_meter.total - fast0
+    line = f"  SCORE [{ctype}] AA {aa}/{probes}"
+    if probes:
+        line += f" ({aa / probes:.2f})"
+    line += f" | SEH {seh}/{probes}"
+    if ctype == "static":
+        line += f" | CRS {'1.00' if recognized else '0.00'} (field ceiling ~0.25)"
+    if ctype == "conditional":
+        line += f" | false-Q {len(session.store.questions)}"
+    line += f" | cost {dtok:,}+{ftok:,} tok"
+    print(line)
+
+
+def _cmd_metrics(session: Session, args: list[str], pinned: bool, console) -> None:
+    """/metrics — pick a conflict type and run its benchmark scenario live, scoring in front of you."""
+    from .evals import _correct, corpus_path, load_corpus
+
+    try:
+        scenarios = load_corpus(corpus_path("conflicts"))
+    except FileNotFoundError:
+        print("  no conflicts corpus found")
+        return
+    types = ["static", "dynamic", "conditional", "all"]
+    if args:
+        choice = args[0].lower()
+    else:
+        print("  which conflict metric?")
+        for i, t in enumerate(types, 1):
+            print(f"    {i}) {t}")
+        pick = input("  metric> ").strip().lower()
+        choice = types[int(pick) - 1] if pick.isdigit() and 1 <= int(pick) <= len(types) else pick
+    if choice not in types:
+        print("  (cancelled)")
+        return
+    selected = scenarios if choice == "all" else [s for s in scenarios if s.get("conflict_type") == choice]
+    if not selected:
+        print(f"  no '{choice}' scenario")
+        return
+
+    from . import profiles
+
+    prev = session.profile_name
+    session.load_profile(profiles.mind_dir(f"metrics-{choice}"))  # a throwaway mind, never your own
+    session.profile_name = f"metrics-{choice}"
+    try:
+        for sc in selected:
+            _run_metric_scenario(session, sc, pinned, console, _correct)
+    except KeyboardInterrupt:
+        print("\n  (metrics cancelled)")
+    finally:
+        session.running_note = None
+        if pinned:
+            _paint_header(console, session)
+    print(f"\n  done - metrics ran in profile 'metrics-{choice}'. /profile {prev} to return to your mind")
 
 
 def _cmd_persona(session: Session, args: list[str], pinned: bool, console) -> None:
@@ -571,6 +675,8 @@ def main(argv: list[str] | None = None) -> int:
                     print("  (no open questions)")
                 for qq in pend:
                     print("  ? " + qq.text)
+            elif cmd == "/metrics":
+                _cmd_metrics(session, line.split()[1:], pinned, console)
             elif cmd == "/persona":
                 _cmd_persona(session, line.split()[1:], pinned, console)
             elif cmd == "/profile":
