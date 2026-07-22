@@ -167,13 +167,31 @@ def load_dataset_slice(
     return Slice(name=f"personamem-{size}-{pid}", sessions=sessions, probes=probes)
 
 
+import re as _re
+
+
 def score_answer(answer: str, probe: Probe) -> bool:
-    """Correct if the reply picks the right letter or names the right option."""
+    """Correct if the reply picks the right letter or names the right option.
+
+    Tolerant of the system's own honesty: the runtime's hedge prefix ("If I remember
+    rightly: b") and quoted/parenthesised letters ('"a"', '(b)', 'B).') all score on the
+    letter they pick — hedging is a confidence statement, not a wrong answer.
+    """
     ans = answer.lower().strip()
     if not ans:
         return False
-    lead = ans.lstrip("(").split(")")[0].split(".")[0].split(":")[0].strip()
-    if lead == probe.letter:
+    from ..runtime import HEDGE_PREFIX
+
+    hedge = HEDGE_PREFIX.lower().strip()
+    if ans.startswith(hedge):
+        ans = ans[len(hedge):].lstrip(" :").strip()
+    # the whole reply is one (possibly wrapped) letter: b / "a" / (c) / B).
+    m = _re.match(r'^[\s"\'`(\[]*([a-h])[\s"\'`)\].:,]*$', ans)
+    if m:
+        return m.group(1) == probe.letter
+    # a letter followed by a delimiter then text: "b) green tea" — but NOT "a glass of milk"
+    m = _re.match(r'^[\s"\'`(\[]*([a-h])[")\].:,]', ans)
+    if m and m.group(1) == probe.letter:
         return True
     if probe.answer.lower() in ans:
         # naming the right option only counts if it doesn't also name a wrong one

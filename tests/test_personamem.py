@@ -39,8 +39,18 @@ def test_score_answer_variants():
     assert personamem.score_answer("(b)", p)
     assert personamem.score_answer("B) green tea", p)
     assert personamem.score_answer("I'd say green tea.", p)
+    # the system's own honesty must not read as wrongness (seen live on sample-big):
+    assert personamem.score_answer('"b"', p)
+    assert personamem.score_answer("If I remember rightly: b", p)
+    assert personamem.score_answer('If I remember rightly: "b"', p)
+    assert not personamem.score_answer("If I remember rightly: a", p)  # hedged AND wrong is wrong
     assert not personamem.score_answer("a", p)
     assert not personamem.score_answer("coffee", p)
+    # 'a' as an article is not a letter pick
+    pa = personamem.Probe(qid="q", qtype="t", question="?",
+                          options=["warm milk", "cola", "tea"], answer="warm milk",
+                          after_session=0)
+    assert not personamem.score_answer("a glass of cola at night", pa)
     # naming the right option only counts when no wrong option is named too
     assert not personamem.score_answer("maybe green tea or maybe cola", p)
     assert not personamem.score_answer("", p)
