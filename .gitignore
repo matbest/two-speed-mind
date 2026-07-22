@@ -27,3 +27,7 @@ data/
 .openrouter_key
 
 personas/*/mind/
+
+# Benchmark data (downloaded) and run results - never commit
+evals/personamem/
+bench-results/

@@ -1,0 +1,50 @@
+# A hand-made PersonaMem-shaped fixture: multi-session persona turns + in-situ multiple-choice
+# probes. Small enough to run offline on the fakes (tests) and as a smoke slice (/bench).
+# Shapes mirror the real benchmark: recall, evolving preference, and an unanswerable probe
+# (abstention - which MC scoring penalises; we report it separately).
+name = "personamem-sample"
+
+[[session]]
+turns = [
+    "Green tea is my favourite drink.",
+    "Chess is my main hobby these days.",
+]
+
+[[session]]
+turns = [
+    "Coffee upsets my stomach lately.",
+    "Chess tournaments fill my weekends now.",
+]
+
+[[session]]
+turns = [
+    "Matcha lattes are my new go-to drink.",
+]
+
+[[probe]]
+after_session = 0
+type = "recall_preference"
+question = "Which drink should you suggest for me?"
+options = ["coffee", "green tea", "cola"]
+answer = "green tea"
+
+[[probe]]
+after_session = 1
+type = "recall_fact"
+question = "Which hobby fills my weekends?"
+options = ["chess", "painting", "running"]
+answer = "chess"
+
+[[probe]]
+after_session = 2
+type = "preference_evolution"
+question = "Which drink is my current go-to?"
+options = ["green tea", "matcha lattes", "cola"]
+answer = "matcha lattes"
+
+[[probe]]
+after_session = 2
+type = "unanswerable"
+question = "Which breed of dog do I own?"
+options = ["beagle", "poodle", "husky"]
+answer = "beagle"

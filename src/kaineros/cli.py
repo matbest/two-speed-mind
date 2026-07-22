@@ -9,9 +9,11 @@ tail is handed to the slow model — a turn is extracted exactly once, ever.
 """
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
+from pathlib import Path
 
 from .compiler import Compiler
 from .fakes import FakeFastModel, FakeJudge, FakeSlowModel
@@ -35,6 +37,7 @@ HELP = (
     "  /profile   list profiles, or /profile <name> to switch (each has its own wiki)\n"
     "  /persona   /persona <name> builds a fresh wiki from a scripted person (watch it grow)\n"
     "  /metrics   run a benchmark live and score it - pick a family (conflict / retrieval)\n"
+    "  /bench     external benchmarks: /bench sample (offline fixture) or /bench slice (PersonaMem)\n"
     "  /forget    clear the short-term buffer   (/forget all erases the whole mind)\n"
     "  /quit      exit\n"
 )
@@ -600,6 +603,94 @@ def _cmd_metrics(session: Session, args: list[str], pinned: bool, console) -> No
     print(f"\n  done - ran in profile 'metrics-{tag}'. /profile {prev} to return to your mind")
 
 
+def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None:
+    """/bench — run an external benchmark slice in a quarantined profile.
+
+    'sample' is the checked-in fixture (offline, seconds); 'slice' is a slice of the real
+    PersonaMem dataset (needs the data downloaded, spends deep tokens - see the printed hint).
+    """
+    from .bench import personamem
+
+    which = _pick("which benchmark?", ["sample", "slice"], args[0].lower() if args else None)
+    if which is None:
+        print("  (cancelled)")
+        return
+    try:
+        if which == "sample":
+            sl = personamem.load_sample()
+        else:
+            persona = args[1] if len(args) > 1 else (input("  persona id (blank = first)> ").strip() or None)
+            raw = args[2] if len(args) > 2 else input("  how many questions? [10]> ").strip()
+            limit = int(raw) if raw.isdigit() else 10
+            sl = personamem.load_dataset_slice(persona=persona, limit=limit)
+    except (RuntimeError, OSError) as exc:
+        print(f"  {exc}")
+        return
+
+    from . import profiles
+
+    prev = session.profile_name
+    target = f"bench-{sl.name}"
+    session.load_profile(profiles.mind_dir(target))  # a throwaway mind, never your own
+    session.profile_name = target
+    session.wipe()
+    d0, f0 = session.deep_meter.total, session.fast_meter.total
+    n_turns = sum(len(s) for s in sl.sessions)
+    print(f"  {sl.name}: {len(sl.sessions)} session(s), {n_turns} turn(s), {len(sl.probes)} probe(s)")
+
+    def drain() -> None:  # background worker: wait visibly, with stall detection (as /metrics)
+        if session.backlog() == 0:
+            return
+        which_model = session.backend_detail or "the deep model"
+        print(f"  (deep brain reviewing {session.backlog()} turn(s) via {which_model}...)")
+        last, stalled_since = session.backlog(), time.time()
+        deadline = time.time() + 600
+        while session.backlog() > 0 and time.time() < deadline:
+            session.running_note = f"bench: reviewing... {session.backlog()} left"
+            if pinned:
+                _paint_header(console, session)
+            session._wake.set()
+            time.sleep(0.5)
+            now = session.backlog()
+            if now < last:
+                print(f"     ...{now} left")
+                last, stalled_since = now, time.time()
+            elif time.time() - stalled_since > 90:
+                print("  (review stalled - the deep model may be rate-limited or slow; continuing)")
+                break
+
+    rows: list[dict] = []
+    try:
+        rows = personamem.run_slice(
+            session, sl, say=lambda s: print(f"  {s}"), wait_idle=drain if session.background else None
+        )
+    except KeyboardInterrupt:
+        print("\n  (bench cancelled - scoring what ran)")
+    finally:
+        session.running_note = None
+        if pinned:
+            _paint_header(console, session)
+
+    for r in rows:
+        mark = "OK" if r["correct"] else ("ABSTAIN" if r["abstained"] else "MISS")
+        print(f"probe [{r['type']}]: expected {r['expected']}")
+        print(f"   -> {r['answer']}   [{mark}]")
+    print()
+    for line in personamem.summarise(rows):
+        print("  " + line)
+    dtok, ftok = session.deep_meter.total - d0, session.fast_meter.total - f0
+    print(f"  cost {dtok:,} deep + {ftok:,} fast tok")
+    out = Path(__file__).resolve().parents[2] / "bench-results"
+    out.mkdir(exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = out / f"{sl.name}-{stamp}.jsonl"
+    with open(path, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+    print(f"  rows -> {path}")
+    print(f"  done - ran in profile '{target}'. /profile {prev} to return to your mind")
+
+
 def _cmd_persona(session: Session, args: list[str], pinned: bool, console) -> None:
     """/persona <name> — wipe a dedicated profile and rebuild it from a scripted conversation,
     so you watch a wiki form from nothing. Never touches the user's own profiles."""
@@ -814,6 +905,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  done - {r.fused} fused, {r.queued} question(s) queued")
             elif cmd == "/metrics":
                 _cmd_metrics(session, line.split()[1:], pinned, console)
+            elif cmd == "/bench":
+                _cmd_bench(session, line.split()[1:], pinned, console)
             elif cmd == "/persona":
                 _cmd_persona(session, line.split()[1:], pinned, console)
             elif cmd == "/profile":
