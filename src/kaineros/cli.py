@@ -498,10 +498,22 @@ def _run_metric_scenario(session: Session, sc: dict, pinned: bool, console, corr
         print(f"   -> {r.answer}   [{'OK' if ok else 'MISS'}]")
     recognized = bool(session.store.questions) or any(len(p) > 1 for p in session.store.pool.values())
     dtok, ftok = session.deep_meter.total - deep0, session.fast_meter.total - fast0
+    # if turns never compiled (model rate-limited/unavailable), the mind never learned the facts -
+    # a MISS here is NOT a mechanism failure, so mark it inconclusive rather than scoring it
+    uncompiled = session.backlog()
+    if uncompiled and not session.store.pages():
+        print(
+            f"  INCONCLUSIVE [{ctype}] - {uncompiled} turn(s) never compiled (deep model "
+            f"unavailable/rate-limited); the mind was empty, so this is NOT a real score. "
+            f"cost {dtok:,}+{ftok:,} tok"
+        )
+        return
     line = f"  SCORE [{ctype}] AA {aa}/{probes}"
     if probes:
         line += f" ({aa / probes:.2f})"
     line += f" | SEH {seh}/{probes}"
+    if uncompiled:
+        line += f" | PARTIAL ({uncompiled} turn(s) uncompiled)"
     if ctype == "static":
         line += f" | CRS {'1.00' if recognized else '0.00'} (field ceiling ~0.25)"
     if ctype == "conditional":
