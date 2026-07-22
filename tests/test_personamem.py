@@ -18,6 +18,18 @@ def test_sample_fixture_loads():
     assert "(a) coffee" in p.text and "(b) green tea" in p.text
 
 
+def test_big_fixture_loads_and_is_well_formed():
+    sl = personamem.load_sample(personamem.SAMPLE_BIG)
+    assert len(sl.sessions) == 8
+    assert len(sl.probes) == 10
+    for p in sl.probes:
+        assert p.answer in p.options  # every probe's answer is one of its own options
+        assert 0 <= p.after_session < len(sl.sessions)
+    # the query shapes the real benchmark cares about are all represented
+    types = {p.qtype for p in sl.probes}
+    assert {"update", "conditional", "preference_evolution", "new_scenario", "unanswerable"} <= types
+
+
 def test_score_answer_variants():
     p = personamem.Probe(
         qid="q", qtype="t", question="?", options=["coffee", "green tea", "cola"],

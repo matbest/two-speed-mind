@@ -1,0 +1,126 @@
+# The bigger built-in PersonaMem-shaped fixture: one persona, 8 sessions, ~20 turns, 10 probes
+# across the benchmark's query shapes - recall, distractor, update, conditional, evolution,
+# new-scenario application, unanswerable. Sized to exercise a real deep model properly while
+# staying an order of magnitude below a real dataset slice.
+name = "personamem-sample-big"
+
+[[session]]
+turns = [
+    "I work as a graphic designer at a small studio.",
+    "Figma is my main design tool.",
+    "I cycle to work most days.",
+]
+
+[[session]]
+turns = [
+    "I'm allergic to peanuts - it's serious, I carry an epipen.",
+    "Thai food is my favourite cuisine.",
+    "Green curry is my usual order.",
+]
+
+[[session]]
+turns = [
+    "My sister Anna lives in Portland, Oregon.",
+    "My brother Ben lives in Portland, Maine.",
+    "Anna teaches primary school.",
+]
+
+[[session]]
+turns = [
+    "Bouldering has become my main hobby.",
+    "I go to the climbing gym on Tuesdays and Thursdays.",
+]
+
+[[session]]
+turns = [
+    "Big news - I've left the studio and gone freelance.",
+    "Freelance life means I set my own hours now.",
+]
+
+[[session]]
+turns = [
+    "For client calls I always dress smart.",
+    "Working from home it's hoodies all day.",
+]
+
+[[session]]
+turns = [
+    "Honestly I've gone off Thai lately - Japanese food is my thing now.",
+    "Ramen is my usual order these days.",
+]
+
+[[session]]
+turns = [
+    "Just adopted a rescue greyhound called Pixel!",
+    "Pixel needs two walks a day.",
+]
+
+[[probe]]
+after_session = 0
+type = "recall_preference"
+question = "Which design tool do I mainly use?"
+options = ["Sketch", "Figma", "Photoshop"]
+answer = "Figma"
+
+[[probe]]
+after_session = 1
+type = "recall_fact"
+question = "Which food allergy do I have?"
+options = ["shellfish", "peanuts", "gluten"]
+answer = "peanuts"
+
+[[probe]]
+after_session = 2
+type = "distractor"
+question = "Which state does my sister Anna live in?"
+options = ["Oregon", "Maine", "Washington"]
+answer = "Oregon"
+
+[[probe]]
+after_session = 3
+type = "recall_fact"
+question = "Which days do I go climbing?"
+options = ["Tuesdays and Thursdays", "weekends", "Mondays"]
+answer = "Tuesdays and Thursdays"
+
+[[probe]]
+after_session = 4
+type = "update"
+question = "What is my work situation now?"
+options = ["employed at a studio", "freelance", "between jobs"]
+answer = "freelance"
+
+[[probe]]
+after_session = 5
+type = "conditional"
+question = "What do I wear for client calls?"
+options = ["a hoodie", "smart clothes", "gym gear"]
+answer = "smart clothes"
+
+[[probe]]
+after_session = 6
+type = "preference_evolution"
+question = "Which cuisine should you suggest for dinner tonight?"
+options = ["Thai", "Japanese", "Italian"]
+answer = "Japanese"
+
+[[probe]]
+after_session = 6
+type = "preference_evolution"
+question = "What is my usual order these days?"
+options = ["green curry", "ramen", "pad thai"]
+answer = "ramen"
+
+[[probe]]
+after_session = 7
+type = "new_scenario"
+question = "I want to buy a winter coat for my pet - what kind of animal is it for?"
+options = ["a cat", "a greyhound", "a parrot"]
+answer = "a greyhound"
+
+[[probe]]
+after_session = 7
+type = "unanswerable"
+question = "What car do I drive?"
+options = ["a Tesla", "a Honda", "a Ford"]
+answer = "a Tesla"

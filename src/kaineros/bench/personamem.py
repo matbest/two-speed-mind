@@ -29,6 +29,7 @@ from ..schema import Turn
 
 EVALS_DIR = Path(__file__).resolve().parents[3] / "evals"
 SAMPLE = EVALS_DIR / "personamem-sample.toml"
+SAMPLE_BIG = EVALS_DIR / "personamem-sample-big.toml"
 DATA_DIR = EVALS_DIR / "personamem"
 LETTERS = "abcdefgh"
 
