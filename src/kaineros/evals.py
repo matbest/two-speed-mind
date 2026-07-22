@@ -170,9 +170,14 @@ def score_scenario(scenario, fakes=False, openrouter=False, free=False) -> dict:
         "fast_tok": s.fast_meter.total,
     }
     if ctype == "static":
-        # CRS is the benchmark's static-conflict metric — did it NOTICE the contradiction rather
-        # than answer right by luck? The field's ceiling here is ~0.25.
-        row["crs"] = 1.0 if recognized else 0.0
+        if scenario.get("expect_conflict", True):
+            # CRS is the benchmark's static-conflict metric — did it NOTICE the contradiction
+            # rather than answer right by luck? The field's ceiling here is ~0.25.
+            row["crs"] = 1.0 if recognized else 0.0
+        else:
+            # ground truth: no genuine conflict (idiom / distractor) — CRS doesn't apply, and
+            # flagging a conflict (a queued question) is the error worth counting
+            row["false_flag"] = len(s.store.questions)
     if ctype in ("static", "dynamic"):
         row["lag"] = _lag(scenario, fakes, openrouter, free)
     if ctype == "conditional":
@@ -190,6 +195,8 @@ def run_metrics(scenarios, fakes, openrouter, free, out=print) -> None:
         parts.append(f"SEH {r['seh']:.2f}" if r["seh"] is not None else "SEH n/a")
         if "crs" in r:
             parts.append(f"CRS {r['crs']:.2f}")
+        if "false_flag" in r:
+            parts.append(f"CRS n/a (no real conflict) | false-flag {r['false_flag']}")
         if r.get("lag") is not None:
             parts.append(f"lag {r['lag']}")
         if "false_q" in r:

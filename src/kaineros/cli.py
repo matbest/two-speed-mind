@@ -460,7 +460,8 @@ def _run_metric_scenario(session: Session, sc: dict, pinned: bool, console, corr
     # visible progress + a stall/overall timeout so it never looks (or actually) hung on a slow
     # or rate-limited free tier.
     if session.backlog() > 0:
-        print(f"  (deep brain reviewing {session.backlog()} turn(s) - the free model is slow...)")
+        which = session.backend_detail or "the deep model"
+        print(f"  (deep brain reviewing {session.backlog()} turn(s) via {which}...)")
     deadline = time.time() + 300
     last = session.backlog()
     stalled_since = time.time()
@@ -475,7 +476,7 @@ def _run_metric_scenario(session: Session, sc: dict, pinned: bool, console, corr
             print(f"     ...{now_backlog} left")
             last, stalled_since = now_backlog, time.time()
         elif time.time() - stalled_since > 90:  # no progress for 90s -> worker likely parked
-            print("  (review stalled - the free deep model may be rate-limited; scoring what compiled)")
+            print("  (review stalled - the deep model may be rate-limited or slow; scoring what compiled)")
             break
     if session.backlog() > 0:
         print(f"  (proceeding with {session.backlog()} turn(s) still uncompiled - partial score)")
@@ -515,7 +516,13 @@ def _run_metric_scenario(session: Session, sc: dict, pinned: bool, console, corr
     if uncompiled:
         line += f" | PARTIAL ({uncompiled} turn(s) uncompiled)"
     if ctype == "static":
-        line += f" | CRS {'1.00' if recognized else '0.00'} (field ceiling ~0.25)"
+        if sc.get("expect_conflict", True):
+            line += f" | CRS {'1.00' if recognized else '0.00'} (field ceiling ~0.25)"
+        else:
+            # ground truth says there is NO genuine conflict - not recognising one is correct,
+            # and flagging one (a queued question) would be the error
+            flagged = len(session.store.questions)
+            line += f" | CRS n/a (no real conflict) | false-flag {flagged}"
     if ctype == "conditional":
         line += f" | false-Q {len(session.store.questions)}"
     line += f" | cost {dtok:,}+{ftok:,} tok"

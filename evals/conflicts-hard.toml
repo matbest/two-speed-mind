@@ -12,6 +12,9 @@
 [[scenario]]
 name = "static-idiom - an idiom must not overwrite a stated fact"
 conflict_type = "static"
+# ground truth: the steak line is an idiom, NOT a real contradiction - the right behaviour is to
+# recognise NO conflict, so CRS is n/a here and flagging one would be the error
+expect_conflict = false
 turns = [
     "I'm a strict vegetarian.",
     "I've been vegetarian for ten years - no meat at all.",
@@ -26,6 +29,8 @@ question = "What is my diet?"
 [[scenario]]
 name = "static-distractor - two near-identical facts, pull the right one"
 conflict_type = "static"
+# ground truth: Anna/Oregon and Ben/Maine are two DIFFERENT facts, not a contradiction - CRS n/a
+expect_conflict = false
 turns = [
     "My sister Anna lives in Portland, Oregon.",
     "My brother Ben lives in Portland, Maine.",
