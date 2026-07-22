@@ -60,7 +60,10 @@ class FakeSlowModel:
                 Candidate(
                     gene=gene,
                     content=t.text,
-                    provenance=Provenance(source_turn_ids=(t.id,), created_at=t.created_at, stated=True),
+                    provenance=Provenance(
+                        source_turn_ids=(t.id,), source_texts=(t.text,),
+                        created_at=t.created_at, stated=True,
+                    ),
                 )
             )
         return out

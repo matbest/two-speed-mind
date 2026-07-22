@@ -175,6 +175,7 @@ def candidates_from_items(items: list[dict], users: list[Turn]) -> list[Candidat
                 ),
                 provenance=Provenance(
                     source_turn_ids=(src.id,),
+                    source_texts=(src.text,),  # the raw words travel with the fact (spec §46)
                     created_at=src.created_at or time.time(),
                     stated=item["stated"],
                     confidence=item["confidence"],

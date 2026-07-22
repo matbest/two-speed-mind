@@ -310,4 +310,16 @@ This prototype proves the *architecture* — with the model faked — as a comma
       either page has *no* tags always falls through to the judge — scoping only skips work when
       both sides declared their topics and the topics are disjoint.
 
+**The primary source (raw before derived)**
+46. There are two records, at two levels of digestion. The **raw record** is every turn,
+    verbatim, captured deterministically at the harness level (`turns.jsonl`, append-only,
+    written at the exactly-once compile boundary — so chat, evals, and benches are all captured
+    the same way). The **population and the wiki are derived state**: the extractor's
+    restatements, the judge's rankings — all of it could in principle be re-derived from the raw
+    record by a better compiler later. Each fact also carries its own raw words inline
+    (`provenance.source_texts`, unioned by dedup like receipts) so `pool.json` is auditable at a
+    glance and each wiki page can show a "said as:" line. **Reference only:** raw text never
+    enters a prompt — the fast brain reads the wiki, the judge compares restatements — so the
+    raw layer costs zero tokens at any size.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

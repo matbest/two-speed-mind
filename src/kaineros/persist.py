@@ -47,6 +47,7 @@ def _read(path: Path) -> dict:
 def _prov_dict(p: Provenance) -> dict:
     return {
         "source_turn_ids": list(p.source_turn_ids),
+        "source_texts": list(p.source_texts),
         "created_at": p.created_at,
         "stated": p.stated,
         "confidence": p.confidence,
@@ -58,12 +59,29 @@ def _prov_dict(p: Provenance) -> dict:
 def _prov(d: dict) -> Provenance:
     return Provenance(
         source_turn_ids=tuple(d.get("source_turn_ids", ())),
+        source_texts=tuple(d.get("source_texts", ())),
         created_at=d.get("created_at", 0.0),
         stated=d.get("stated", True),
         confidence=d.get("confidence", "medium"),
         stakes=d.get("stakes", "high"),
         supersedes=d.get("supersedes", False),
     )
+
+
+def append_turns(home: str | Path, turns) -> None:
+    """The primary source (spec §46): verbatim turns, append-only, exactly-once (the caller is
+    the compile boundary). The pool and wiki are DERIVED state; this is what they derive from."""
+    home = Path(home)
+    home.mkdir(parents=True, exist_ok=True)
+    with open(home / "turns.jsonl", "a", encoding="utf-8") as f:
+        for t in turns:
+            f.write(
+                json.dumps(
+                    {"id": t.id, "at": t.created_at, "speaker": t.speaker, "text": t.text},
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
 
 
 def save_store(store: Store, home: str | Path) -> None:
@@ -143,12 +161,15 @@ def _render_wiki(store: Store, kainome: Path) -> None:
             for entry in page.rank_history
         )
         tags_line = f"- tags: {', '.join(page.tags)}\n" if page.tags else ""
+        # the audit line (spec §46): the user's own words, so a page is checkable at a glance
+        quotes = "".join(f'- said as: "{t}"\n' for t in prov.source_texts[:3])
         body = (
             f"# {page.gene}\n\n"
             f"{page.content}\n\n"
             f"{tags_line}"
             f"- {said}, confidence {prov.confidence}, stakes {prov.stakes}\n"
             f"- first said {_when(prov.created_at)}, receipts {receipts}\n"
+            f"{quotes}"
             f"{history}\n"
         )
         tmp = kainome / (name + ".tmp")
@@ -239,7 +260,7 @@ def load_store(home: str | Path) -> Store:
 def erase(home: str | Path) -> None:
     """Delete the persisted mind (pool + pages + wiki). Used by `/forget all` after confirmation."""
     home = Path(home)
-    for name in ("pool.json", "pages.json", "questions.json"):
+    for name in ("pool.json", "pages.json", "questions.json", "turns.jsonl"):
         f = home / name
         if f.exists():
             f.unlink()

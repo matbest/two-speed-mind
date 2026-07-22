@@ -131,6 +131,13 @@ class Session:
         # marker advances only after extraction succeeds: a failed/cancelled call must not lose
         # the turns. A re-run may re-extract (at-least-once); housekeeping's dedup merges that.
         self.compiled_upto = upto
+        if self.store_dir is not None and fresh:
+            # the PRIMARY SOURCE (spec §46): every turn crossing the exactly-once boundary is
+            # captured verbatim, append-only — the pool and wiki are derived state; this is the
+            # ground truth they could be re-derived from
+            from .persist import append_turns
+
+            append_turns(self.store_dir, fresh)
         for cand in candidates:
             self.compiler.insert(cand)
         self._passes += 1

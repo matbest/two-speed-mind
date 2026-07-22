@@ -32,6 +32,8 @@ class Turn:
 class Provenance:
     """Where a fact came from — the basis for hedging, abstention, and audit."""
     source_turn_ids: tuple[str, ...] = ()
+    source_texts: tuple[str, ...] = ()  # the raw words, verbatim (spec §46) — reference only:
+                                        # never enters a prompt; dedup unions like receipts
     created_at: float = 0.0
     stated: bool = True                 # True: the user said it; False: the system inferred it
     confidence: Confidence = "medium"

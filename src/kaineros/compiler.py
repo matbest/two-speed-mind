@@ -252,9 +252,14 @@ class Compiler:
                 for i in cand.provenance.source_turn_ids
                 if i not in survivor.provenance.source_turn_ids
             )
+            texts = survivor.provenance.source_texts + tuple(
+                t for t in cand.provenance.source_texts
+                if t not in survivor.provenance.source_texts
+            )
             survivor.provenance = replace(
                 survivor.provenance,
                 source_turn_ids=ids,
+                source_texts=texts,
                 created_at=max(survivor.provenance.created_at, cand.provenance.created_at),
             )
             # tags union like receipts do (spec §44): every restatement's vocabulary is kept
