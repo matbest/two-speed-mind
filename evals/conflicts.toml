@@ -10,11 +10,14 @@
 [[scenario]]
 name = "static - a stray contradiction must not overwrite a stable fact"
 conflict_type = "static"
+# A CLEAN literal contradiction: three plain statements of birthplace = Boston, then one flat
+# stray "Chicago" claim. Boston is well-established; the lone Chicago mention must NOT win. This is
+# where "recency is a vote not a veto" defends the incumbent - the field's worst category.
 turns = [
     "I was born in Boston.",
-    "Boston born and raised - my whole family is from there.",
-    "I still go back to Boston every summer.",
-    "Chicago's a great city, I was practically born there.",
+    "My birthplace is Boston.",
+    "I was born and raised in Boston, Massachusetts.",
+    "I was born in Chicago.",
 ]
 [[scenario.expect]]
 keywords = ["boston"]
