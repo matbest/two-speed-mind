@@ -43,6 +43,7 @@ src/kaineros/
   compiler.py     Compiler — slow-deep: binary-insert by pairwise judge, promote settled winners
   runtime.py      Runtime — fast: retrieve above a confidence floor, abstain, phrase, explain
   fakes.py        deterministic Judge/SlowModel/FastModel — build & test against these (no real model)
+  claude_cli.py   deep brain on the Claude subscription via `claude -p`  (mixed build: `kaineros --claude`)
   cli.py          the chat REPL + slash commands
 tests/            the contract (test_store.py + test_runtime.py)
 docs/             spec.md, plan.md, tasks.md
