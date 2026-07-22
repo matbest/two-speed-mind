@@ -54,19 +54,23 @@ class Compiler:
             self._place(candidate.gene, pool, candidate)
         self._inserted_since_pass += 1
 
-    def housekeep(self) -> list[Page]:
-        """One maintenance pass: dedup → fission → fusion → promotion. Returns newly promoted
-        pages; the full tally lands in ``self.last_report``.
+    def housekeep(self, cleanup: bool = True) -> list[Page]:
+        """One maintenance pass, in two modes (spec §41):
 
-        See docs/tasks.md T4, T8.4-T8.6.
+        - **rank** (always, cheap, per-pool): dedup restatements, split mixed pools, promote
+          settled winners. No cross-page comparison.
+        - **cleanup** (``cleanup=True``, expensive, cross-page): fusion + conflict detection —
+          O(pages²) judge calls. Gated so the caller can run it on a cadence, not every turn.
+
+        Returns newly promoted pages; the full tally lands in ``self.last_report``.
         """
-        merged = split = 0
+        merged = split = fused = queued = 0
         for gene, pool in self.store.pool.items():
-            merged += self._dedup(gene, pool)
+            merged += self._dedup(gene, pool)  # rank: per-pool, cheap
         for gene in list(self.store.pool):
-            split += self._fission(gene)
-        fused = self._fusion()
-        queued = 0
+            split += self._fission(gene)        # rank: per-pool
+        if cleanup:
+            fused = self._fusion()              # cleanup: cross-page, O(pages²)
 
         promoted: list[Page] = []
         for gene, pool in self.store.pool.items():
@@ -95,7 +99,8 @@ class Compiler:
                 self.store.clean[gene] = new_page
                 promoted.append(new_page)
 
-        queued = self._curate()  # spec §36: queue disambiguation questions for conflicting pages
+        if cleanup:  # cleanup: cross-page conflict detection (spec §36), O(pages²)
+            queued = self._curate()
         self.last_report = CompileReport(
             inserted=self._inserted_since_pass,
             merged=merged,

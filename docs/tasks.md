@@ -232,6 +232,24 @@ nearest analog. Scenarios in `evals/conflicts.toml` (`kaineros evals --corpus co
 4. **git-commit the kainome each consolidation pass** — every promotion/demotion becomes a reviewable
    diff: a free, human-owned audit trail complementing in-fact provenance.
 
+## Slice 10 — deep-brain modes & cheaper retrieval (spec §40-41)
+
+**T14 (done): mode-gated cleanup.** `housekeep(cleanup=False)` does rank-only (dedup/fission/
+promotion, per-pool); `cleanup=True` adds the cross-page fusion + conflict detection. `Session`
+runs cleanup on a cadence (`cleanup_every`, =4 in chat, =1 for tests/metrics) and `/cleanup` forces
+it. Cuts the O(pages²) token debt on the hot path. Next in this slice, not yet built:
+
+**T15. Summarise mode.** Promotion should *distil* the pool into a concise, search-friendly page
+(via the deep model), not copy the top candidate verbatim. Keeps provenance; improves what the
+fast brain reads.
+
+**T16. Index-as-router + two-step retrieval (the token win).** Cleanup mode regenerates `index.md`
+as a router: one terse cue line per page (aliases/keywords the fast brain can match). Retrieval
+becomes two-step — the fast (cheap) model reads the *index* to pick the right page, then reads only
+that page — instead of pulling every keyword match. Fewer tokens per answer; the whole point of
+spec §41. Needs: a router format the deep brain writes in cleanup, and a runtime path that consults
+the index first. Measure the token drop with `evals --corpus retrieval --metrics`.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

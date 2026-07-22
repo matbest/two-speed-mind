@@ -30,6 +30,7 @@ HELP = (
     "  /notebook  show the kainome (promoted pages - the clean knowledge base)\n"
     "  /why       the grounded reason behind the last answer\n"
     "  /questions the disambiguation questions the mind has queued to ask\n"
+    "  /cleanup   force the deep brain's cross-page cleanup now (fusion + conflict check)\n"
     "  /model     show or switch models: /model deep|fast [model-id]  (--cloud only)\n"
     "  /profile   list profiles, or /profile <name> to switch (each has its own wiki)\n"
     "  /persona   /persona <name> builds a fresh wiki from a scripted person (watch it grow)\n"
@@ -73,8 +74,13 @@ class Session:
         fast: FastModel | None = None,
         store_dir: str | None = None,
         background: bool = False,
+        cleanup_every: int = 1,
     ) -> None:
         self.store_dir = store_dir
+        # how often the deep brain runs its expensive cross-page cleanup (fusion + conflict
+        # detection). 1 = every pass (thorough; tests, metrics). Higher = save tokens in chat.
+        self.cleanup_every = cleanup_every
+        self._passes = 0
         if store is None and store_dir is not None:
             from .persist import load_store
 
@@ -124,7 +130,9 @@ class Session:
         self.compiled_upto = upto
         for cand in candidates:
             self.compiler.insert(cand)
-        promoted = self.compiler.housekeep()
+        self._passes += 1
+        cleanup = self._passes % self.cleanup_every == 0  # cross-page work only on the cadence
+        promoted = self.compiler.housekeep(cleanup=cleanup)
         self.compiler.last_report.backlog = self.backlog()
         if self.store_dir is not None:
             from .persist import save_store
@@ -165,6 +173,14 @@ class Session:
             self._wake.set()  # re-wakes a worker parked after repeated failures
             time.sleep(0.05)
         return self.backlog() == 0
+
+    def cleanup(self) -> None:
+        """Force a full cross-page cleanup pass now (fusion + conflict detection) — spec §41."""
+        self.compiler.housekeep(cleanup=True)
+        if self.store_dir is not None:
+            from .persist import save_store
+
+            save_store(self.store, self.store_dir)
 
     def wipe(self) -> None:
         """Erase the whole mind — buffer, store, and (if persisted) the files on disk."""
@@ -673,7 +689,9 @@ def main(argv: list[str] | None = None) -> int:
             fast = FREE_FAST_MODEL if "--free" in args else FAST_MODEL
             ensure_key()
             preflight(fast)  # RateLimitedError here → the countdown loop below waits it out
-            s = Session(store_dir=mind, background=True)
+            # real chat: run the expensive cross-page cleanup only every 4th pass (save tokens);
+            # /cleanup forces it. Cloud/free models make this matter.
+            s = Session(store_dir=mind, background=True, cleanup_every=4)
             s.compiler.judge = OpenRouterJudge(deep, meter=s.deep_meter)
             s.slow = OpenRouterSlowModel(deep, meter=s.deep_meter)
             s.runtime.model = OpenRouterFastModel(fast, meter=s.fast_meter)
@@ -746,6 +764,11 @@ def main(argv: list[str] | None = None) -> int:
                     print("  (no open questions)")
                 for qq in pend:
                     print("  ? " + qq.text)
+            elif cmd == "/cleanup":
+                print("  (deep brain: cross-page cleanup - fusion + conflict check...)")
+                session.cleanup()
+                r = session.compiler.last_report
+                print(f"  done - {r.fused} fused, {r.queued} question(s) queued")
             elif cmd == "/metrics":
                 _cmd_metrics(session, line.split()[1:], pinned, console)
             elif cmd == "/persona":

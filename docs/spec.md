@@ -248,4 +248,23 @@ This prototype proves the *architecture* — with the model faked — as a comma
     resolves. The question only *prompted* the turn; it is never a shortcut around competition or
     grounding. The question is then marked answered.
 
+**The deep brain's three modes (cost separated by cadence)**
+40. The deep brain does three jobs at three costs, and they must not all run every turn:
+    - **Rank** (every pass, cheap — per-pool, no cross-page comparison): insert/rank candidates by
+      pairwise `better`, merge restatements (dedup), split mixed pools (fission), promote settled
+      winners. This is the frequent per-turn work.
+    - **Summarise** (on promotion): turn the winning candidate into the clean wiki page. v1 copies
+      the top candidate's content; *real* distillation (a concise, search-friendly page from the
+      pool's evidence) is a later build.
+    - **Cleanup** (occasional, expensive — cross-page, O(pages²) judge calls): fusion (heal
+      split-brain pages) and conflict detection (queue disambiguation questions). Gated to a
+      cadence (`cleanup_every`, default every-4th-pass in chat) or forced on demand (`/cleanup`),
+      never every turn — this is where the token cost lives, kept off the hot path.
+41. Cleanup mode's **goal is retrieval efficiency for the cheap fast brain**: it (re)optimises the
+    wiki — above all `index.md` — so the fast model can choose the right page to read with the
+    fewest tokens. The index becomes a **router** (each page a terse cue/alias line) rather than a
+    dump, so retrieval can read the index + the one right page instead of many pages. (The
+    two-step index-routed retrieval is a designed follow-on; today retrieval reads matching pages
+    directly.)
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.
