@@ -674,16 +674,13 @@ def main(argv: list[str] | None = None) -> int:
         except RuntimeError as exc:
             print(f"error: {exc}")
             return 1
-    # the pinned cockpit uses VT cursor/scroll-region codes that can corrupt some Windows
-    # terminals (PSReadLine) — so it is OPT-IN via --cockpit. Default: panels print inline, which
-    # is robust everywhere.
-    pinned = "--cockpit" in args and console is not None and vt_ok and not console.legacy_windows
+    # pinned panels on by default where the terminal supports VT (off on legacy consoles, and with
+    # --plain). We deliberately do NOT repaint the header from the background worker thread —
+    # concurrent cursor writes while the main thread is in input() corrupt the terminal (PSReadLine
+    # crash). The header repaints only on the main thread, after each turn.
+    pinned = console is not None and vt_ok and not console.legacy_windows and "--no-cockpit" not in args
     if pinned:
         _enter_cockpit_screen(console, session)
-        if session.background:
-            # a landed background pass repaints the header in place — the answer didn't wait,
-            # the panels catch up (spec §27)
-            session.on_compiled = lambda: _paint_header(console, session)
     session.profile_name = profile
     from .view import status_bar
 
@@ -692,8 +689,6 @@ def main(argv: list[str] | None = None) -> int:
     if session.cloud:
         print(f"(models: deep={session.slow.model}, fast={session.runtime.model.model})")
     print(f"(mind: {mind} - {len(session.store.pages())} pages)")
-    if console is not None and not pinned:
-        print("(panels print inline; add --cockpit in Windows Terminal for a pinned header)")
     print(BANNER)
     try:
       while True:
