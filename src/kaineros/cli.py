@@ -684,12 +684,13 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
                       f"{session.deep_meter.total - d0:,} deep tok spent)")
 
     rows: list[dict] = []
+    stats: dict = {}
     beater = None
     if session.cloud:
         beater = threading.Thread(target=_beat, daemon=True)
         beater.start()
     try:
-        rows = personamem.run_slice(
+        rows, stats = personamem.run_slice(
             session, sl, say=_say, wait_idle=drain if session.background else None
         )
     except KeyboardInterrupt:
@@ -704,10 +705,11 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
 
     for r in rows:
         mark = "OK" if r["correct"] else ("ABSTAIN" if r["abstained"] else "MISS")
+        used = f", read {len(r['used'])} page(s): {', '.join(r['used'])}" if r.get("used") else ""
         print(f"probe [{r['type']}]: expected {r['expected']}")
-        print(f"   -> {r['answer']}   [{mark}]")
+        print(f"   -> {r['answer']}   [{mark}{used}]")
     print()
-    for line in personamem.summarise(rows):
+    for line in personamem.summarise(rows, stats):
         print("  " + line)
     dtok, ftok = session.deep_meter.total - d0, session.fast_meter.total - f0
     print(f"  cost {dtok:,} deep + {ftok:,} fast tok")
@@ -719,6 +721,8 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         for r in rows:
             f.write(json.dumps(r) + "\n")
     print(f"  rows -> {path}")
+    if session.store_dir is not None:
+        print(f"  wiki -> {Path(session.store_dir) / 'kainome'}  (browse what it built)")
     print(f"  done - ran in profile '{target}'. /profile {prev} to return to your mind")
 
 

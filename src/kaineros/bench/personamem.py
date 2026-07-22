@@ -181,9 +181,34 @@ def score_answer(answer: str, probe: Probe) -> bool:
     return False
 
 
-def run_slice(session, sl: Slice, say=lambda s: None, wait_idle=None) -> list[dict]:
-    """Feed sessions, settle, probe. UI-free: `say` narrates, `wait_idle` drains a background
-    worker (the CLI passes its progress-printing drain; sync sessions need neither)."""
+class _CountingJudge:
+    """Transparent tally around whatever judge the session runs — how often does the deep brain
+    actually get asked, and what kind of question? Pure delegation; verdicts untouched."""
+
+    def __init__(self, inner) -> None:
+        self.inner = inner
+        self.counts = {"better": 0, "same_claim": 0, "same_account": 0, "conflicts": 0}
+
+    def better(self, gene, a, b):
+        self.counts["better"] += 1
+        return self.inner.better(gene, a, b)
+
+    def same_claim(self, gene, a, b):
+        self.counts["same_claim"] += 1
+        return self.inner.same_claim(gene, a, b)
+
+    def same_account(self, gene, a, b):
+        self.counts["same_account"] += 1
+        return self.inner.same_account(gene, a, b)
+
+    def conflicts(self, a, b):
+        self.counts["conflicts"] += 1
+        return self.inner.conflicts(a, b)
+
+
+def run_slice(session, sl: Slice, say=lambda s: None, wait_idle=None) -> tuple[list[dict], dict]:
+    """Feed sessions, settle, probe. Returns (rows, population_stats). UI-free: `say` narrates,
+    `wait_idle` drains a background worker (the CLI passes its progress-printing drain)."""
     by_pos: dict[int, list[Probe]] = {}
     for p in sl.probes:
         by_pos.setdefault(min(p.after_session, len(sl.sessions) - 1), []).append(p)
@@ -194,6 +219,9 @@ def run_slice(session, sl: Slice, say=lambda s: None, wait_idle=None) -> list[di
     def pct() -> str:
         return f"[{done}/{total} {100 * done // total}%]"
 
+    counting = _CountingJudge(session.compiler.judge)
+    session.compiler.judge = counting
+    inserted = 0
     rows: list[dict] = []
     for i, turns in enumerate(sl.sessions):
         say(f"{pct()} session {i + 1}/{len(sl.sessions)}: compiling {len(turns)} turn(s) "
@@ -204,6 +232,7 @@ def run_slice(session, sl: Slice, say=lambda s: None, wait_idle=None) -> list[di
         session.consolidate()
         if wait_idle is not None:
             wait_idle()
+        inserted += getattr(session.compiler.last_report, "inserted", 0)
         done += 1
         say(f"{pct()} session {i + 1} compiled in {time.time() - t0:.0f}s "
             f"({session.deep_meter.total - d0:,} deep tok, {len(session.store.pages())} page(s))")
@@ -225,15 +254,27 @@ def run_slice(session, sl: Slice, say=lambda s: None, wait_idle=None) -> list[di
                     "answer": resp.answer,
                     "correct": score_answer(resp.answer, probe) and not resp.abstained,
                     "abstained": resp.abstained,
+                    "used": [p.gene for p in resp.used],  # which pages the lookup actually read
                     "deep_tok": session.deep_meter.total - d0,
                     "fast_tok": session.fast_meter.total - f0,
                     "seconds": round(time.time() - t0, 2),
                 }
             )
-    return rows
+    session.compiler.judge = counting.inner  # unwrap — leave the session as we found it
+    pairwise = sum(counting.counts.values())
+    candidates = sum(len(p) for p in session.store.pool.values())
+    stats = {
+        "genes": len(session.store.pool),
+        "candidates": candidates,
+        "pages": len(session.store.pages()),
+        "inserted": inserted,
+        "judge_calls": dict(counting.counts, total=pairwise),
+        "rank_per_element": round(pairwise / inserted, 1) if inserted else None,
+    }
+    return rows, stats
 
 
-def summarise(rows: list[dict]) -> list[str]:
+def summarise(rows: list[dict], stats: dict | None = None) -> list[str]:
     n = len(rows)
     if not n:
         return ["no probes ran"]
@@ -247,5 +288,16 @@ def summarise(rows: list[dict]) -> list[str]:
         rs = by_type[t]
         ok = sum(r["correct"] for r in rs)
         lines.append(f"  {t}: {ok}/{len(rs)}")
+    if stats:
+        jc = stats["judge_calls"]
+        lines.append(
+            f"population: {stats['inserted']} extracted -> {stats['candidates']} candidate(s) "
+            f"across {stats['genes']} gene pool(s) -> {stats['pages']} page(s) promoted"
+        )
+        lines.append(
+            f"judge calls: {jc['total']} (better {jc['better']}, same_claim {jc['same_claim']}, "
+            f"same_account {jc['same_account']}, conflicts {jc['conflicts']})"
+            + (f" - avg {stats['rank_per_element']} rankings per element" if stats["rank_per_element"] is not None else "")
+        )
     lines.append("(PersonaMem's published frontier-model ceiling is ~0.52 on the full set)")
     return lines

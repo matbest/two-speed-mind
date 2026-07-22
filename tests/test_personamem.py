@@ -37,8 +37,13 @@ def test_score_answer_variants():
 def test_run_slice_on_fakes():
     session = Session()  # synchronous, deterministic fakes
     sl = personamem.load_sample()
-    rows = personamem.run_slice(session, sl)
+    rows, stats = personamem.run_slice(session, sl)
     assert len(rows) == len(sl.probes)
+    # the population block: extraction happened, pools exist, the judge was consulted
+    assert stats["inserted"] == 5 and stats["genes"] >= 4
+    assert stats["judge_calls"]["total"] > 0
+    # the counting wrapper is removed afterwards - the session leaves as it arrived
+    assert not isinstance(session.compiler.judge, personamem._CountingJudge)
     by_type = {r["type"]: r for r in rows}
     # recall probes: the fake fast model echoes the routed page, which names the right option
     assert by_type["recall_preference"]["correct"]
