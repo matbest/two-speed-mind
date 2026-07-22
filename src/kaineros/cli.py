@@ -659,14 +659,39 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
                 print("  (review stalled - the deep model may be rate-limited or slow; continuing)")
                 break
 
+    # heartbeat: a real deep model means minutes-long silent stretches (each judge comparison is
+    # its own model call) — tick elapsed time + token spend so it never looks hung. Plain prints
+    # only; NEVER repaint the pinned header off-thread (that's the PSReadLine crash).
+    beat_stop = threading.Event()
+    last_out = [time.time()]
+
+    def _say(s: str) -> None:
+        last_out[0] = time.time()
+        print(f"  {s}")
+
+    def _beat() -> None:
+        start = time.time()
+        while not beat_stop.wait(5.0):
+            if time.time() - last_out[0] >= 15:
+                last_out[0] = time.time()
+                print(f"     ...still working ({time.time() - start:.0f}s elapsed, "
+                      f"{session.deep_meter.total - d0:,} deep tok spent)")
+
     rows: list[dict] = []
+    beater = None
+    if session.cloud:
+        beater = threading.Thread(target=_beat, daemon=True)
+        beater.start()
     try:
         rows = personamem.run_slice(
-            session, sl, say=lambda s: print(f"  {s}"), wait_idle=drain if session.background else None
+            session, sl, say=_say, wait_idle=drain if session.background else None
         )
     except KeyboardInterrupt:
         print("\n  (bench cancelled - scoring what ran)")
     finally:
+        beat_stop.set()
+        if beater is not None:
+            beater.join(timeout=6)
         session.running_note = None
         if pinned:
             _paint_header(console, session)

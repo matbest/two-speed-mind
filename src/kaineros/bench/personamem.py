@@ -188,22 +188,35 @@ def run_slice(session, sl: Slice, say=lambda s: None, wait_idle=None) -> list[di
     for p in sl.probes:
         by_pos.setdefault(min(p.after_session, len(sl.sessions) - 1), []).append(p)
 
+    total = len(sl.sessions) + len(sl.probes)  # progress units: each session, each probe
+    done = 0
+
+    def pct() -> str:
+        return f"[{done}/{total} {100 * done // total}%]"
+
     rows: list[dict] = []
     for i, turns in enumerate(sl.sessions):
-        say(f"session {i + 1}/{len(sl.sessions)}: {len(turns)} turn(s)")
+        say(f"{pct()} session {i + 1}/{len(sl.sessions)}: compiling {len(turns)} turn(s) "
+            "(extract + judge - slow on a real deep model)...")
+        d0, t0 = session.deep_meter.total, time.time()
         for text in turns:
             session.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
         session.consolidate()
         if wait_idle is not None:
             wait_idle()
+        done += 1
+        say(f"{pct()} session {i + 1} compiled in {time.time() - t0:.0f}s "
+            f"({session.deep_meter.total - d0:,} deep tok, {len(session.store.pages())} page(s))")
         if i not in by_pos:
             continue
         for _ in range(session.compiler.promote_after):  # let settled winners earn their pages
             session.compiler.housekeep()
         for probe in by_pos[i]:
+            say(f"{pct()} probe: {probe.question[:60]}")
             d0, f0 = session.deep_meter.total, session.fast_meter.total
             t0 = time.time()
             resp = session.runtime.respond(probe.text, [])  # empty buffer: memory, not context
+            done += 1
             rows.append(
                 {
                     "qid": probe.qid,
