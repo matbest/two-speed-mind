@@ -433,13 +433,29 @@ def _run_metric_scenario(session: Session, sc: dict, pinned: bool, console, corr
         print("mind> " + resp.answer)
         if pinned:
             _paint_header(console, session)
-    # wait for the deep brain to review everything — the "to review" count drains to zero
-    while session.backlog() > 0:
+    # wait for the deep brain to review everything — the "to review" count drains to zero.
+    # visible progress + a stall/overall timeout so it never looks (or actually) hung on a slow
+    # or rate-limited free tier.
+    if session.backlog() > 0:
+        print(f"  (deep brain reviewing {session.backlog()} turn(s) - the free model is slow...)")
+    deadline = time.time() + 300
+    last = session.backlog()
+    stalled_since = time.time()
+    while session.backlog() > 0 and time.time() < deadline:
         session.running_note = f"{ctype}: reviewing... {session.backlog()} left"
         if pinned:
             _paint_header(console, session)
         session._wake.set()
-        time.sleep(0.3)
+        time.sleep(0.5)
+        now_backlog = session.backlog()
+        if now_backlog < last:  # made progress
+            print(f"     ...{now_backlog} left")
+            last, stalled_since = now_backlog, time.time()
+        elif time.time() - stalled_since > 90:  # no progress for 90s -> worker likely parked
+            print("  (review stalled - the free deep model may be rate-limited; scoring what compiled)")
+            break
+    if session.backlog() > 0:
+        print(f"  (proceeding with {session.backlog()} turn(s) still uncompiled - partial score)")
     session.running_note = f"{ctype}: scoring"
     if pinned:
         _paint_header(console, session)
