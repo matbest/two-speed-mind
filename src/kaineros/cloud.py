@@ -156,6 +156,7 @@ def candidates_from_items(items: list[dict], users: list[Turn]) -> list[Candidat
                     stated=item["stated"],
                     confidence=item["confidence"],
                     stakes=item["stakes"],
+                    supersedes=item.get("supersedes", False),
                 ),
             )
         )
@@ -217,9 +218,10 @@ EXTRACT_SCHEMA = {
                     "stated": {"type": "boolean"},
                     "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
                     "stakes": {"type": "string", "enum": ["low", "high"]},
+                    "supersedes": {"type": "boolean"},
                     "source_turn": {"type": "integer"},
                 },
-                "required": ["gene", "content", "stated", "confidence", "stakes", "source_turn"],
+                "required": ["gene", "content", "stated", "confidence", "stakes", "supersedes", "source_turn"],
                 "additionalProperties": False,
             },
         }
@@ -243,6 +245,11 @@ user.residence.part_time, not user.residence.milton_keynes. The answer changes; 
 - `confidence`: how sure you are the fact is real and correctly read.
 - `stakes`: "low" only for persona/style preferences (name to use, tone, format); "high" for \
 facts about the user's life and world.
+- `supersedes`: true only when the statement DELIBERATELY updates or corrects an earlier fact — \
+signalled by words like "now", "as of today", "not X anymore", "I've moved", "I switched", "new \
+job/car/place". A deliberate update replaces the old value fast. A casual or one-off mention that \
+merely differs is NOT an update (supersedes=false) — set true only for an explicit correction, and \
+key it to the SAME gene as the fact it replaces.
 - `source_turn`: the [index] of the turn the fact came from."""
 
 

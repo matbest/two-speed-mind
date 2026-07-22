@@ -51,6 +51,7 @@ def _prov_dict(p: Provenance) -> dict:
         "stated": p.stated,
         "confidence": p.confidence,
         "stakes": p.stakes,
+        "supersedes": p.supersedes,
     }
 
 
@@ -61,6 +62,7 @@ def _prov(d: dict) -> Provenance:
         stated=d.get("stated", True),
         confidence=d.get("confidence", "medium"),
         stakes=d.get("stakes", "high"),
+        supersedes=d.get("supersedes", False),
     )
 
 

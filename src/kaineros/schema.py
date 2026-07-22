@@ -36,6 +36,9 @@ class Provenance:
     stated: bool = True                 # True: the user said it; False: the system inferred it
     confidence: Confidence = "medium"
     stakes: Stakes = "high"             # "high": facts about the user/world; "low": persona/style
+    supersedes: bool = False            # a DELIBERATE update ("now", "as of today", "not X") —
+                                        # wins fast over an entrenched incumbent (spec §42); a
+                                        # stray contradiction (supersedes=False) still has to fight
 
 
 @dataclass

@@ -48,7 +48,10 @@ class Compiler:
         See docs/tasks.md T2, T3, T8.
         """
         pool = self.store.pool.setdefault(candidate.gene, [])
-        if candidate.provenance.stakes == "low":
+        prov = candidate.provenance
+        if prov.stakes == "low" or prov.supersedes:
+            # low-stakes style, or a DELIBERATE update ("as of today… not X") — believe the newest
+            # immediately, straight to the top, past the incumbent's defence (spec §42)
             pool.insert(0, candidate)
         else:
             self._place(candidate.gene, pool, candidate)
@@ -85,9 +88,8 @@ class Compiler:
             # is meaningless without rivals, and dedup already ran, so a pool of one means
             # "one account, possibly restated", never "a contest in progress"
             uncontested = len(pool) == 1
-            threshold = (
-                0 if (top.provenance.stakes == "low" or uncontested) else self.promote_after
-            )
+            instant = top.provenance.stakes == "low" or top.provenance.supersedes or uncontested
+            threshold = 0 if instant else self.promote_after
             if top.wins >= threshold and (page is None or page.content != top.content):
                 history = page.rank_history if page else []
                 new_page = Page(

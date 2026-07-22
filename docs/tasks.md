@@ -250,6 +250,14 @@ that page — instead of pulling every keyword match. Fewer tokens per answer; t
 spec §41. Needs: a router format the deep brain writes in cleanup, and a runtime path that consults
 the index first. Measure the token drop with `evals --corpus retrieval --metrics`.
 
+**T17 (done): update-signal detection (spec §42).** Provenance gains `supersedes`; the extractor
+sets it for a deliberate update ("now", "as of today", "not X", "moved", "switched", "new") keyed
+to the same gene; the compiler inserts a `supersedes` candidate at the top and promotes it
+immediately (like low-stakes), so a real update displaces an entrenched incumbent fast while a
+stray contradiction still fights. Closes the `dynamic-entrenched` hard-corpus failure without
+touching static. Remaining hard-corpus gap: `dynamic-implicit` + retrieval semantics (needs
+embeddings or alias-enriched pages — the fuller T16).
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

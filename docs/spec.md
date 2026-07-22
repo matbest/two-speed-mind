@@ -267,4 +267,17 @@ This prototype proves the *architecture* — with the model faked — as a comma
     two-step index-routed retrieval is a designed follow-on; today retrieval reads matching pages
     directly.)
 
+**Stray contradiction vs deliberate update (spec §42)**
+42. "Recency is a vote, not a veto" (§6) rightly *defends incumbents* — a stray contradiction can't
+    overwrite an established fact (Kaineros's static-conflict strength). But the same rule wrongly
+    blocks a *real* update: an entrenched "Acme" resists "as of today I work at Initech, not Acme."
+    The two are the same design choice pulling opposite ways. The resolution is to tell them apart:
+    a fact carries a **`supersedes`** flag, set by the extractor only for a **deliberate update** —
+    signalled by "now", "as of today", "not X anymore", "I've moved/switched", "new …" — and keyed
+    to the *same gene* as the fact it replaces. A `supersedes` candidate **jumps to the top of the
+    pool on insert and promotes immediately** (like a low-stakes fact), displacing the incumbent
+    fast; a stray mention (no signal) still binary-inserts and must win the contest. So deliberate
+    corrections land at once while casual contradictions are still resisted — static strength kept,
+    dynamic weakness closed.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.
