@@ -258,6 +258,20 @@ stray contradiction still fights. Closes the `dynamic-entrenched` hard-corpus fa
 touching static. Remaining hard-corpus gap: `dynamic-implicit` + retrieval semantics (needs
 embeddings or alias-enriched pages — the fuller T16).
 
+**T18 (done): verdict cache.** Measured on `/bench sample`: 123 judge calls for 5 elements
+(24.6 rankings/element) — `better` cost 1 (insertion is O(log n) already); the waste was
+`same_claim` (74) and `conflicts` (40) re-asking the SAME unchanged pairs every housekeeping
+pass. The Compiler now memoises verdicts on `(kind, gene, content-a, content-b)`; repeats answer
+from the cache; only never-seen pairs reach the model. Result: 123 → 18 calls, 3.6
+rankings/element (6.8x), scores unchanged; tests/test_verdict_cache.py holds the contract
+("repeat passes cost zero new calls"). Verdicts survive a mid-run judge swap by design — they're
+about the facts, and re-litigating settled pairs would reintroduce the churn.
+
+**T19. Deterministic pre-comparator.** Settle FIRST-TIME comparisons from candidate metadata
+before asking a model at all: normalised-text equality → same_account; `supersedes` + timestamps
+→ ordering; different-gene trivial cases. The remaining judge calls after T18 are all first-asks
+— this trims those. Testable on the fakes with the same counting instrument.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

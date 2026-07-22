@@ -30,6 +30,24 @@ class Compiler:
         self.split_after = split_after
         self.last_report = CompileReport()  # the deep brain's receipt (spec §19)
         self._inserted_since_pass = 0
+        # verdict cache (T18): a verdict about an unchanged pair never expires. Housekeeping
+        # re-walks the same pools every pass, so without this the judge is re-asked the same
+        # same_claim/conflicts questions endlessly (measured: 24.6 rankings/element on the
+        # bench sample; better cost 1). Keyed on content, not identity — dedup merges receipts
+        # but never edits content, and fission re-keys the gene so re-asks are correct there.
+        # If the judge is swapped mid-run (/model deep), old verdicts persist by design: a
+        # verdict is about the FACTS, and re-litigating settled pairs on a model change would
+        # reintroduce exactly the churn this exists to kill.
+        self._verdicts: dict[tuple, bool] = {}
+
+    def _verdict(self, kind: str, gene: str, a: Candidate, b: Candidate) -> bool:
+        key = (kind, gene, a.content, b.content)
+        if key not in self._verdicts:
+            if kind == "conflicts":
+                self._verdicts[key] = self.judge.conflicts(a, b)
+            else:
+                self._verdicts[key] = getattr(self.judge, kind)(gene, a, b)
+        return self._verdicts[key]
 
     def insert(self, candidate: Candidate) -> None:
         """Place `candidate` into ``store.pool[candidate.gene]``, keeping the list best-first
@@ -129,9 +147,9 @@ class Compiler:
                 pa, pb = self.store.clean[ga], self.store.clean[gb]
                 a = Candidate(gene=ga, content=pa.content, provenance=pa.provenance)
                 b = Candidate(gene=gb, content=pb.content, provenance=pb.provenance)
-                if self.judge.same_claim(ga, a, b):
+                if self._verdict("same_claim", ga, a, b):
                     continue  # fusion's job, not a question
-                if not self.judge.conflicts(a, b):
+                if not self._verdict("conflicts", "", a, b):
                     continue
                 if self.store.has_question_for((ga, gb)):
                     continue  # already pending — don't nag twice
@@ -155,7 +173,7 @@ class Compiler:
         lo, hi = 0, len(pool)
         while lo < hi:
             mid = (lo + hi) // 2
-            if self.judge.better(gene, candidate, pool[mid]):
+            if self._verdict("better", gene, candidate, pool[mid]):
                 hi = mid
             else:
                 lo = mid + 1
@@ -170,7 +188,7 @@ class Compiler:
         kept: list[Candidate] = []
         for cand in pool:
             survivor = next(
-                (k for k in kept if self.judge.same_account(gene, k, cand)), None
+                (k for k in kept if self._verdict("same_account", gene, k, cand)), None
             )
             if survivor is None:
                 kept.append(cand)
@@ -201,7 +219,7 @@ class Compiler:
         if len(pool) <= self.split_after:
             return 0
         seed = pool[0]
-        keep = [c for c in pool if self.judge.same_claim(gene, seed, c)]
+        keep = [c for c in pool if self._verdict("same_claim", gene, seed, c)]
         movers = [c for c in pool if c not in keep]
         if not movers:
             return 0  # large but pure — crowded is only a symptom when claims are mixed
@@ -250,8 +268,8 @@ class Compiler:
                 a = Candidate(gene=p1.gene, content=p1.content, provenance=p1.provenance)
                 b = Candidate(gene=p2.gene, content=p2.content, provenance=p2.provenance)
                 # asked both ways round: fusion is destructive, one noisy verdict must not fire it
-                if self.judge.same_claim(genes[i], a, b) and self.judge.same_claim(
-                    genes[j], b, a
+                if self._verdict("same_claim", genes[i], a, b) and self._verdict(
+                    "same_claim", genes[j], b, a
                 ):
                     return genes[i], genes[j]
         return None
