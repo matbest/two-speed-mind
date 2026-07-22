@@ -9,13 +9,14 @@ from kaineros.evals import load_corpus
 def test_conflicts_corpus_is_well_formed():
     from kaineros.evals import corpus_path
 
-    scenarios = load_corpus(corpus_path("conflicts"))
-    names = " ".join(s["name"] for s in scenarios)
-    assert "static" in names and "dynamic" in names and "conditional" in names
-    for s in scenarios:
-        assert len(s["turns"]) >= 3
-        for exp in s["expect"]:
-            assert exp["keywords"] and exp["question"].strip()
+    for corpus in ("conflicts", "conflicts-hard"):
+        scenarios = load_corpus(corpus_path(corpus))
+        types = {s.get("conflict_type") for s in scenarios}
+        assert {"static", "dynamic", "conditional"} <= types, corpus
+        for s in scenarios:
+            assert len(s["turns"]) >= 3
+            for exp in s["expect"]:
+                assert exp["keywords"] and exp["question"].strip()
 
 
 def test_corpus_parses_and_is_well_formed():

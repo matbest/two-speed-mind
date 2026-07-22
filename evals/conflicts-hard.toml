@@ -1,0 +1,99 @@
+# HARD conflict scenarios - designed to break Kaineros where the clean corpus couldn't.
+# Run: kaineros evals --corpus conflicts-hard --metrics --free   (or /metrics conflict-hard <type>)
+#
+# Each targets a specific weakness the easy corpus dodged:
+#   static      - idiomatic false contradictions; lexically-similar distractors (routing precision)
+#   dynamic     - entrenched-old vs single-new (forces IN-POOL displacement, not gene-separation);
+#                 IMPLICIT updates (the new fact never says "I no longer...")
+#   conditional - IMPLICIT conditions (no "morning"/"evening" keyword to route on)
+
+# ---- static ------------------------------------------------------------------------------------
+
+[[scenario]]
+name = "static-idiom - an idiom must not overwrite a stated fact"
+conflict_type = "static"
+turns = [
+    "I'm a strict vegetarian.",
+    "I've been vegetarian for ten years - no meat at all.",
+    "I don't eat meat, full stop.",
+    "God, I could murder a steak right now.",
+]
+[[scenario.expect]]
+keywords = ["vegetarian"]
+absent = ["steak"]
+question = "What is my diet?"
+
+[[scenario]]
+name = "static-distractor - two near-identical facts, pull the right one"
+conflict_type = "static"
+turns = [
+    "My sister Anna lives in Portland, Oregon.",
+    "My brother Ben lives in Portland, Maine.",
+    "Anna has been out in Oregon for years now.",
+    "Ben settled in Maine last spring.",
+]
+[[scenario.expect]]
+keywords = ["oregon"]
+absent = ["maine"]
+question = "Which state does my sister Anna live in?"
+
+# ---- dynamic -----------------------------------------------------------------------------------
+
+[[scenario]]
+name = "dynamic-entrenched - a single new update must beat an entrenched old fact"
+conflict_type = "dynamic"
+turns = [
+    "I work at Acme Corp.",
+    "Acme has been my employer for five years.",
+    "Everyone at Acme knows me by now.",
+    "Update: as of today I work at Initech, not Acme.",
+]
+[[scenario.expect]]
+keywords = ["initech"]
+absent = ["acme"]
+question = "Where do I work now?"
+
+[[scenario]]
+name = "dynamic-implicit - an update that never says 'I no longer'"
+conflict_type = "dynamic"
+turns = [
+    "I drive a red Honda Civic.",
+    "The Honda has been reliable for years.",
+    "Just picked up my new Tesla yesterday - so exciting!",
+]
+[[scenario.expect]]
+keywords = ["tesla"]
+absent = ["honda"]
+question = "What car do I drive?"
+
+# ---- conditional -------------------------------------------------------------------------------
+
+[[scenario]]
+name = "conditional-implicit - conditions are implied, not labelled morning/evening"
+conflict_type = "conditional"
+turns = [
+    "I need caffeine to get going.",
+    "A strong coffee is how I kick things off.",
+    "A glass of warm milk helps me wind down and sleep.",
+]
+[[scenario.expect]]
+keywords = ["coffee"]
+question = "What do I drink to start my day?"
+[[scenario.expect]]
+keywords = ["milk"]
+question = "What helps me sleep?"
+
+[[scenario]]
+name = "conditional-context - preference bound to a situation"
+conflict_type = "conditional"
+turns = [
+    "For client meetings I always wear a sharp suit.",
+    "Suit and tie whenever I see customers.",
+    "At the gym it is just shorts and a tee.",
+]
+[[scenario.expect]]
+keywords = ["suit"]
+question = "What do I wear to meet clients?"
+[[scenario.expect]]
+keywords = ["shorts"]
+question = "What do I wear at the gym?"

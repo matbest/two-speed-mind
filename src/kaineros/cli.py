@@ -514,6 +514,8 @@ def _run_metric_scenario(session: Session, sc: dict, pinned: bool, console, corr
 _METRIC_FAMILIES = {
     "conflict": ("conflicts", ["static", "dynamic", "conditional", "all"],
                  "serve the right fact when facts contradict"),
+    "conflict-hard": ("conflicts-hard", ["static", "dynamic", "conditional", "all"],
+                      "harder conflicts - implicit, lexically-similar, idiomatic (tries to break it)"),
     "retrieval": ("retrieval", None, "pull the right page from a crowded, distractor-heavy mind"),
 }
 
