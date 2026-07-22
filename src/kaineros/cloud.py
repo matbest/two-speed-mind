@@ -148,6 +148,10 @@ _UPDATE_SIGNALS = (
     "nowadays", "i've moved", "i moved", "i've switched", "i switched", "i've relocated",
     "relocated to", "moved to", "switched to", "changed to", "changed jobs", "update:",
     "now i ", "actually i ", "instead of", ", not ", " not anymore",
+    # leaving/joining language is deliberate-update phrasing too ("I've left the studio and
+    # gone freelance"). Kept narrow: "i left my ..." would catch "left my keys on the bus"
+    "i've left the", "i've left my job", "i've quit", "i quit", "i've resigned", "i resigned",
+    "i've joined", "i joined", "i've started at", "i started at", "i've stopped", "i stopped",
 )
 
 
