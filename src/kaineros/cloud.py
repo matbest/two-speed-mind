@@ -140,8 +140,28 @@ def phrase_user(question: str, pages: list[Page], buffer: list[Turn]) -> str:
     )
 
 
+# A deliberate update is detected DETERMINISTICALLY from the turn text (not asked of the model in
+# the prompt) — code enriches the element's metadata; the ranking brain uses it (spec §42). Expand
+# the signal list rather than growing the extractor prompt.
+_UPDATE_SIGNALS = (
+    "as of today", "as of now", "from now on", "no longer", "not anymore", "these days",
+    "nowadays", "i've moved", "i moved", "i've switched", "i switched", "i've relocated",
+    "relocated to", "moved to", "switched to", "changed to", "changed jobs", "update:",
+    "now i ", "actually i ", "instead of", ", not ", " not anymore",
+)
+
+
+def looks_like_update(text: str) -> bool:
+    """True if a turn deliberately updates/corrects an earlier fact — a code heuristic, no prompt."""
+    t = " " + text.lower().strip() + " "
+    return any(sig in t for sig in _UPDATE_SIGNALS)
+
+
 def candidates_from_items(items: list[dict], users: list[Turn]) -> list[Candidate]:
-    """Map the extractor's schema-validated items onto Candidates with real provenance."""
+    """Map the extractor's schema-validated items onto Candidates with real provenance.
+
+    `supersedes` is computed here, deterministically from the turn text — not returned by the model.
+    """
     out: list[Candidate] = []
     for item in items:
         idx = min(max(0, item["source_turn"]), len(users) - 1)
@@ -156,7 +176,7 @@ def candidates_from_items(items: list[dict], users: list[Turn]) -> list[Candidat
                     stated=item["stated"],
                     confidence=item["confidence"],
                     stakes=item["stakes"],
-                    supersedes=item.get("supersedes", False),
+                    supersedes=looks_like_update(src.text),  # deterministic, from the turn text
                 ),
             )
         )
@@ -218,10 +238,9 @@ EXTRACT_SCHEMA = {
                     "stated": {"type": "boolean"},
                     "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
                     "stakes": {"type": "string", "enum": ["low", "high"]},
-                    "supersedes": {"type": "boolean"},
                     "source_turn": {"type": "integer"},
                 },
-                "required": ["gene", "content", "stated", "confidence", "stakes", "supersedes", "source_turn"],
+                "required": ["gene", "content", "stated", "confidence", "stakes", "source_turn"],
                 "additionalProperties": False,
             },
         }
@@ -245,11 +264,6 @@ user.residence.part_time, not user.residence.milton_keynes. The answer changes; 
 - `confidence`: how sure you are the fact is real and correctly read.
 - `stakes`: "low" only for persona/style preferences (name to use, tone, format); "high" for \
 facts about the user's life and world.
-- `supersedes`: true only when the statement DELIBERATELY updates or corrects an earlier fact — \
-signalled by words like "now", "as of today", "not X anymore", "I've moved", "I switched", "new \
-job/car/place". A deliberate update replaces the old value fast. A casual or one-off mention that \
-merely differs is NOT an update (supersedes=false) — set true only for an explicit correction, and \
-key it to the SAME gene as the fact it replaces.
 - `source_turn`: the [index] of the turn the fact came from."""
 
 

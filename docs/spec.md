@@ -278,6 +278,16 @@ This prototype proves the *architecture* — with the model faked — as a comma
     pool on insert and promotes immediately** (like a low-stakes fact), displacing the incumbent
     fast; a stray mention (no signal) still binary-inserts and must win the contest. So deliberate
     corrections land at once while casual contradictions are still resisted — static strength kept,
-    dynamic weakness closed.
+    dynamic weakness closed. The signal is detected **deterministically in code**
+    (`looks_like_update` over the turn text), *not* asked of the model in a prompt — see §43.
+
+**Design principle: metadata over prompt**
+43. Prefer solving problems by **enriching the stored elements' metadata** (fields on
+    `Provenance`/`Candidate`/`Page`), computed **deterministically in code** where possible, so the
+    ranking brain has more to work with — rather than adding rules to model prompts. It is cheaper,
+    deterministic (no reliance on a weak model reasoning right), and grounded (behaviour from state,
+    not prose). The model is used only for what needs it (turning raw text into gene-keyed
+    candidates). `supersedes` (§42) is the worked example: a metadata flag set by a code heuristic,
+    not a prompt rule.
 
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.
