@@ -39,6 +39,22 @@ HELP = (
 )
 
 
+_Q_WORDS = frozenset(
+    "who what where when why how which whose whom do does did is are am was were can could will "
+    "would should have has had tell list name give".split()
+)
+
+
+def _is_question(text: str) -> bool:
+    """A cheap intent split: is this turn asking, or just telling? Statements skip retrieval."""
+    t = text.strip().lower()
+    if not t:
+        return False
+    if t.endswith("?"):
+        return True
+    return t.split()[0].strip(",.'\"") in _Q_WORDS
+
+
 class Session:
     """One conversation: buffer + compiled marker + the two brains over one store."""
 
@@ -165,7 +181,12 @@ class Session:
             self._wake.set()  # the answer never waits for the slow brain (spec §24)
         else:
             self.consolidate()
-        resp = self.runtime.respond(text, self.buffer)
+        if _is_question(text):
+            resp = self.runtime.respond(text, self.buffer)
+        else:
+            # a statement, not a question: acknowledge (no retrieval, no phrasing call) — the deep
+            # brain stores it in the background. Cheaper, and no more "I don't know" to a statement.
+            resp = Response(answer="OK", why="statement - the deep brain will store it", used=[])
         self.last_response = resp
         return resp
 
@@ -653,7 +674,10 @@ def main(argv: list[str] | None = None) -> int:
         except RuntimeError as exc:
             print(f"error: {exc}")
             return 1
-    pinned = console is not None and vt_ok and not console.legacy_windows
+    # the pinned cockpit uses VT cursor/scroll-region codes that can corrupt some Windows
+    # terminals (PSReadLine) — so it is OPT-IN via --cockpit. Default: panels print inline, which
+    # is robust everywhere.
+    pinned = "--cockpit" in args and console is not None and vt_ok and not console.legacy_windows
     if pinned:
         _enter_cockpit_screen(console, session)
         if session.background:
@@ -668,8 +692,11 @@ def main(argv: list[str] | None = None) -> int:
     if session.cloud:
         print(f"(models: deep={session.slow.model}, fast={session.runtime.model.model})")
     print(f"(mind: {mind} - {len(session.store.pages())} pages)")
+    if console is not None and not pinned:
+        print("(panels print inline; add --cockpit in Windows Terminal for a pinned header)")
     print(BANNER)
-    while True:
+    try:
+      while True:
         try:
             line = input("you> ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -753,15 +780,16 @@ def main(argv: list[str] | None = None) -> int:
         if q is not None:
             print("mind? " + q.text)
 
-    if session.background and session.backlog() > 0:
-        print(f"(compiling {session.backlog()} remaining turn(s) before quitting...)")
-        try:
-            if not session.flush(timeout=120):
-                print("(some turns could not be compiled - they are lost with this session)")
-        except KeyboardInterrupt:
-            print("(abandoned - un-compiled turns are lost with this session)")
-    if pinned:
-        _exit_cockpit_screen()
+      if session.background and session.backlog() > 0:
+          print(f"(compiling {session.backlog()} remaining turn(s) before quitting...)")
+          try:
+              if not session.flush(timeout=120):
+                  print("(some turns could not be compiled - they are lost with this session)")
+          except KeyboardInterrupt:
+              print("(abandoned - un-compiled turns are lost with this session)")
+    finally:
+        if pinned:  # ALWAYS restore the terminal, even on a crash — never leave a scroll region
+            _exit_cockpit_screen()
     print("bye.")
     return 0
 

@@ -27,11 +27,19 @@ def test_turn_answers_while_extraction_is_still_blocked():
     slow = GatedSlowModel()
     s = Session(slow=slow, background=True)
     resp = s.turn("bananas are yellow")  # returns although the extractor is still blocked
-    assert resp.abstained is True        # honest: nothing is compiled yet (spec §24)
-    assert s.backlog() == 1              # the backlog is real now
+    assert resp.answer == "OK"           # a statement is acknowledged immediately, not waited on
+    assert s.backlog() == 1              # the backlog is real; extraction happens off the path
     slow.gate.set()
     assert s.flush(timeout=5)
     assert s.store.page("bananas") is not None  # the worker landed and promoted it
+
+
+def test_a_question_still_abstains_while_the_mind_is_empty():
+    slow = GatedSlowModel()
+    slow.gate.set()
+    s = Session(slow=slow, background=True)
+    resp = s.turn("where do I live?")    # a question with nothing known yet
+    assert resp.abstained is True        # honest abstention (spec §13)
 
 
 def test_every_turn_extracted_exactly_once_across_background_passes():
