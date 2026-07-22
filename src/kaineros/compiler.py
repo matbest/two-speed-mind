@@ -326,6 +326,11 @@ class Compiler:
         for i in range(len(genes)):
             for j in range(i + 1, len(genes)):
                 p1, p2 = self.store.clean[genes[i]], self.store.clean[genes[j]]
+                # tag scoping (spec §45), same rule as the conflicts sweep: two pages stating
+                # ONE claim must share a topic — both tagged + disjoint topics -> not a
+                # duplicate, no model call. Either side untagged falls through to the judge.
+                if p1.tags and p2.tags and not set(p1.tags) & set(p2.tags):
+                    continue
                 a = Candidate(gene=p1.gene, content=p1.content, provenance=p1.provenance)
                 b = Candidate(gene=p2.gene, content=p2.content, provenance=p2.provenance)
                 # asked both ways round: fusion is destructive, one noisy verdict must not fire it

@@ -40,6 +40,17 @@ def test_disjoint_pages_fusion_sweep_is_free_conflicts_still_asked():
     assert judge.by_kind.get("conflicts", 0) == 3  # one per page pair
 
 
+def test_the_user_convention_does_not_defeat_the_shortcut():
+    """The extractor restates everything as 'The user ...' — that shared token must not make
+    every page-pair look related (measured: same_claim 287 on a 20-page sweep before the fix)."""
+    comp, judge = _build()
+    comp.insert(_cand("job", "The user works as a graphic designer."))
+    comp.insert(_cand("pet", "The user has a rescue greyhound called Pixel."))
+    comp.insert(_cand("gym", "The user climbs on Tuesdays."))
+    comp.housekeep()
+    assert judge.by_kind.get("same_claim", 0) == 0  # 'the'/'user' carry no signal
+
+
 def test_overlapping_pair_still_reaches_the_judge():
     comp, judge = _build()
     comp.insert(_cand("sister", "My sister Anna lives in Portland, Oregon."))

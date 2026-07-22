@@ -63,6 +63,18 @@ def test_disjoint_tags_skip_the_conflicts_check():
     assert comp.judge.by_kind.get("conflicts", 0) == 0
 
 
+def test_disjoint_tags_skip_the_fusion_sweep_too():
+    """Fusion's both-ways same_claim sweep was the 287-call bill on sample-big — pages with
+    declared, disjoint topics can't be one claim, so no model call."""
+    comp = Compiler(Store(), TallyJudge(claim_of=lambda c: c.content))
+    # claim_of=content: even the judge would say different-claims; the point is it isn't ASKED.
+    # Contents share the word 'enjoys' so the token-overlap shortcut alone can't settle it.
+    comp.insert(_cand("drink", "The user enjoys green tea.", ("drink", "tea")))
+    comp.insert(_cand("pet", "The user enjoys walking Pixel.", ("pet", "dog")))
+    comp.housekeep()
+    assert comp.judge.by_kind.get("same_claim", 0) == 0
+
+
 def test_untagged_pair_still_reaches_the_judge():
     """Conservative rule: scoping only skips when BOTH sides declared their topics."""
     comp = Compiler(Store(), TallyJudge())

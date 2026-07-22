@@ -37,7 +37,11 @@ def _variants(token: str) -> set[str]:
 _STOPWORDS = frozenset(
     "i me my mine we our you your he she it its they them their a an the of to in on at for and or "
     "is are am was were be been being do does did have has had this that these those about with "
-    "from as so just still got what who where when why how which whose whom no not".split()
+    "from as so just still got what who where when why how which whose whom no not "
+    # "user": the extractor's restatement convention starts every content "The user..." — as a
+    # token it appears on EVERY page, carrying no signal for routing and defeating the
+    # zero-overlap pre-comparator (measured: same_claim 287 on a 20-page bench sweep)
+    "user".split()
 )
 
 
