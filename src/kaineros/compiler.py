@@ -162,6 +162,7 @@ class Compiler:
                     content=top.content,
                     provenance=top.provenance,
                     rank_history=history + [{"at": time.time(), "event": "promoted"}],
+                    tags=top.tags,  # the winning allele's vocabulary serves the page (spec §44)
                 )
                 self.store.clean[gene] = new_page
                 promoted.append(new_page)
@@ -192,6 +193,12 @@ class Compiler:
             for j in range(i + 1, len(genes)):
                 ga, gb = genes[i], genes[j]
                 pa, pb = self.store.clean[ga], self.store.clean[gb]
+                # tag scoping (spec §45): when BOTH pages declared their topics and the topics
+                # are disjoint, they can't be in collision — skip the model call. Either side
+                # untagged → fall through to the judge (conservative; the spec's zero-overlap
+                # collision case stays covered because its facts share a topic tag).
+                if pa.tags and pb.tags and not set(pa.tags) & set(pb.tags):
+                    continue
                 a = Candidate(gene=ga, content=pa.content, provenance=pa.provenance)
                 b = Candidate(gene=gb, content=pb.content, provenance=pb.provenance)
                 if self._verdict("same_claim", ga, a, b):
@@ -250,6 +257,8 @@ class Compiler:
                 source_turn_ids=ids,
                 created_at=max(survivor.provenance.created_at, cand.provenance.created_at),
             )
+            # tags union like receipts do (spec §44): every restatement's vocabulary is kept
+            survivor.tags = survivor.tags + tuple(t for t in cand.tags if t not in survivor.tags)
             merged += 1
         pool[:] = kept
         return merged

@@ -77,6 +77,7 @@ def save_store(store: Store, home: str | Path) -> None:
                 {
                     "id": c.id,
                     "content": c.content,
+                    "tags": list(c.tags),
                     "wins": c.wins,
                     "provenance": _prov_dict(c.provenance),
                 }
@@ -93,6 +94,7 @@ def save_store(store: Store, home: str | Path) -> None:
             {
                 "gene": page.gene,
                 "content": page.content,
+                "tags": list(page.tags),
                 "provenance": _prov_dict(page.provenance),
                 "rank_history": page.rank_history,
             }
@@ -140,9 +142,11 @@ def _render_wiki(store: Store, kainome: Path) -> None:
             f"- {entry.get('event', '?')} {_when(entry.get('at', 0.0))}"
             for entry in page.rank_history
         )
+        tags_line = f"- tags: {', '.join(page.tags)}\n" if page.tags else ""
         body = (
             f"# {page.gene}\n\n"
             f"{page.content}\n\n"
+            f"{tags_line}"
             f"- {said}, confidence {prov.confidence}, stakes {prov.stakes}\n"
             f"- first said {_when(prov.created_at)}, receipts {receipts}\n"
             f"{history}\n"
@@ -153,7 +157,8 @@ def _render_wiki(store: Store, kainome: Path) -> None:
 
     facts = "\n".join(
         f"- {page.content} ([{page.gene}]({_safe(gene)}.md))"
-        for gene, page in store.clean.items()
+        + (f" `{', '.join(page.tags)}`" if page.tags else "")  # the cue line (spec §44): the
+        for gene, page in store.clean.items()                   # words a QUESTION would use
     )
     index = f"# kainome\n\n{facts or '(nothing believed yet)'}\n"
     tmp = kainome / "index.md.tmp"
@@ -180,6 +185,7 @@ def load_store(home: str | Path) -> Store:
                     provenance=_prov(c.get("provenance", {})),
                     id=c["id"],
                     wins=c.get("wins", 0),
+                    tags=tuple(c.get("tags", ())),
                 )
                 for c in candidates
             ]
@@ -208,6 +214,7 @@ def load_store(home: str | Path) -> Store:
                 content=d["content"],
                 provenance=_prov(d.get("provenance", {})),
                 rank_history=d.get("rank_history", []),
+                tags=tuple(d.get("tags", ())),
             )
     else:
         # legacy layout (pre-wiki): one JSON per page under kainome/; order from promotion times

@@ -290,4 +290,24 @@ This prototype proves the *architecture* — with the model faked — as a comma
     candidates). `supersedes` (§42) is the worked example: a metadata flag set by a code heuristic,
     not a prompt rule.
 
+**Tags: the fact's own vocabulary (§43, applied twice)**
+44. Every fact carries **tags** as a child field in the population JSON: the 3–6 words someone
+    would use when *asking* about it (`"Just picked up a new Tesla"` → `car, vehicle, drive, ev`).
+    Minted by the deep brain at extraction (riding an existing call, ~15 tokens), they travel with
+    the fact for life: dedup **unions** them like receipts, fission carries them to the child
+    gene, promotion copies them onto the page, and `index.md` renders them as each page's cue
+    line.
+45. Tags are **hints, never verdicts** — they make work happen or not happen; they never decide
+    truth. Two uses, one field:
+    - **Routing (fast brain):** retrieval matches question tokens against `content ∪ tags`, so an
+      implicit probe ("what *car* do I drive?") reaches a page that never says "car" — closing
+      the dynamic-implicit gap with zero runtime model calls.
+    - **Sweep scoping (deep brain):** the conflicts sweep only asks the judge about page pairs
+      that **share a tag**. Token overlap could not do this safely (facts collide without sharing
+      surface words — "backend engineer" / "platform team"), but tags are deep-model-authored
+      semantics written at compile time, so shared-tag scoping keeps that collision while
+      collapsing O(pages²) checks to pairs within a topic. **Conservative rule:** a pair where
+      either page has *no* tags always falls through to the judge — scoping only skips work when
+      both sides declared their topics and the topics are disjoint.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

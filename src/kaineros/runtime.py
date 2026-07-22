@@ -104,7 +104,11 @@ class Runtime:
         blocked: list[LookupHit] = []
         nomatch: list[LookupHit] = []
         for page in self.store.pages():
-            strength = len(terms & _tokens(page.gene + " " + page.content))
+            # cues = gene + content + tags: tags are the deep brain's answer to "what words would
+            # the QUESTION use?" (spec §45) — they let "what car do I drive?" reach a page that
+            # only ever says "Tesla", with no model call
+            cues = page.gene + " " + page.content + " " + " ".join(page.tags)
+            strength = len(terms & _tokens(cues))
             confidence = page.provenance.confidence
             if strength == 0:
                 nomatch.append(LookupHit(page.gene, 0, confidence, "no match"))

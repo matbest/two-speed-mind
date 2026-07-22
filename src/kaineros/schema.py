@@ -49,6 +49,8 @@ class Candidate:
     provenance: Provenance = field(default_factory=Provenance)
     id: str = field(default_factory=lambda: _new_id("c"))
     wins: int = 0                       # consecutive housekeeping passes held at #1 (promotion threshold)
+    tags: tuple[str, ...] = ()          # the fact's own vocabulary (spec §44) — the words someone
+                                        # would use when ASKING about it; hints, never verdicts
 
 
 @dataclass
@@ -58,6 +60,7 @@ class Page:
     content: str
     provenance: Provenance
     rank_history: list = field(default_factory=list)  # timestamped rank estimates (auditability)
+    tags: tuple[str, ...] = ()          # inherited from the winning allele (spec §44)
 
 
 @dataclass

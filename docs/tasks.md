@@ -278,6 +278,18 @@ the over-eager first draft, which is the point of the suite. Measured on `/bench
 same_claim sweeps 8 → 1. Remaining cost frontier: the conflicts sweep — irreducibly semantic,
 so the lever is scoping (only NEW/changed pages per pass; stakes-gating), not shortcutting.
 
+**T20 (done): tags — the fact's own vocabulary (spec §44-45).** Every fact carries `tags` as a
+child field in the population JSON: the words someone would use when ASKING about it, minted by
+the extractor on the existing call (~15 tok). They travel for life (dedup unions them, promotion
+copies them to the page, index.md renders them as cue lines) and serve both brains: retrieval
+matches `content ∪ tags` (closes dynamic-implicit's vocabulary gap — "what car do I drive?"
+reaches a page that only says "Tesla"), and the conflicts sweep skips page pairs whose declared
+topics are disjoint (collapses O(pages²) when tagged; either side untagged → falls through to
+the judge, so the zero-overlap collision spec test stays covered). Hints, never verdicts.
+Verify on the real backend: `/metrics conflict-hard dynamic` (dynamic-implicit should flip) and
+`/bench 2`'s conflicts count. Note: pre-tags pages on disk have no tags and always fall through
+— the deep brain re-tagging old pages during cleanup is future work.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

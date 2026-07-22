@@ -170,6 +170,9 @@ def candidates_from_items(items: list[dict], users: list[Turn]) -> list[Candidat
             Candidate(
                 gene=item["gene"],
                 content=item["content"],
+                tags=tuple(
+                    dict.fromkeys(t.strip().lower() for t in item.get("tags", []) if t.strip())
+                ),
                 provenance=Provenance(
                     source_turn_ids=(src.id,),
                     created_at=src.created_at or time.time(),
@@ -235,12 +238,13 @@ EXTRACT_SCHEMA = {
                 "properties": {
                     "gene": {"type": "string"},
                     "content": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
                     "stated": {"type": "boolean"},
                     "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
                     "stakes": {"type": "string", "enum": ["low", "high"]},
                     "source_turn": {"type": "integer"},
                 },
-                "required": ["gene", "content", "stated", "confidence", "stakes", "source_turn"],
+                "required": ["gene", "content", "tags", "stated", "confidence", "stakes", "source_turn"],
                 "additionalProperties": False,
             },
         }
@@ -260,6 +264,8 @@ Different claims about one topic get different keys (user.food.loves vs user.foo
 - The key names the QUESTION, never the answer: user.home_city, not user.home.berlin; \
 user.residence.part_time, not user.residence.milton_keynes. The answer changes; the key must not.
 - `content` is one self-contained sentence, understandable years later without the conversation.
+- `tags`: 3-6 lowercase words someone would use when ASKING about this fact — the question's \
+vocabulary, not the answer's ("Just picked up a new Tesla" -> ["car", "vehicle", "drive", "ev"]).
 - `stated`: true if the user said it outright; false if you inferred it.
 - `confidence`: how sure you are the fact is real and correctly read.
 - `stakes`: "low" only for persona/style preferences (name to use, tone, format); "high" for \
