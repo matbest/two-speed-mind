@@ -1,0 +1,36 @@
+# Retrieval metrics: can the fast brain pull the RIGHT page from a crowded, distractor-heavy mind?
+# Run: kaineros evals --corpus retrieval --metrics --free   (or /metrics retrieval in the app)
+# Scored on AA (answered right) and SEH (the gold page was actually retrieved). No conflicts here —
+# every fact is true and distinct; the test is precision of recall among near-neighbours.
+
+[[scenario]]
+name = "recall among many - the right fact from a crowded mind"
+turns = [
+    "My dentist is Dr Patel on the high street.",
+    "My car is a blue Volvo estate.",
+    "My gym membership is at Fitness First.",
+    "My landlord is called Mr Okafor.",
+    "My bank is Barclays.",
+    "My daughter's teacher is Mrs Hughes.",
+]
+[[scenario.expect]]
+keywords = ["patel"]
+question = "Who is my dentist?"
+[[scenario.expect]]
+keywords = ["okafor"]
+question = "What is my landlord's name?"
+
+[[scenario]]
+name = "similar distractors - pull the exact fact, not a neighbour"
+turns = [
+    "My work email is sam at nimbus dot io.",
+    "My personal email is sam at gmail dot com.",
+    "My work phone is a company iPhone.",
+    "My personal phone is an old Android.",
+]
+[[scenario.expect]]
+keywords = ["gmail"]
+question = "What is my personal email?"
+[[scenario.expect]]
+keywords = ["android"]
+question = "What is my personal phone?"

@@ -33,7 +33,7 @@ HELP = (
     "  /model     show or switch models: /model deep|fast [model-id]  (--cloud only)\n"
     "  /profile   list profiles, or /profile <name> to switch (each has its own wiki)\n"
     "  /persona   /persona <name> builds a fresh wiki from a scripted person (watch it grow)\n"
-    "  /metrics   run a conflict-benchmark scenario live and score it (AA/SEH/CRS/cost)\n"
+    "  /metrics   run a benchmark live and score it - pick a family (conflict / retrieval)\n"
     "  /forget    clear the short-term buffer   (/forget all erases the whole mind)\n"
     "  /quit      exit\n"
 )
@@ -450,39 +450,65 @@ def _run_metric_scenario(session: Session, sc: dict, pinned: bool, console, corr
     print(line)
 
 
+# metric families: name -> (corpus file, conflict-type submenu or None, one-line description)
+_METRIC_FAMILIES = {
+    "conflict": ("conflicts", ["static", "dynamic", "conditional", "all"],
+                 "serve the right fact when facts contradict"),
+    "retrieval": ("retrieval", None, "pull the right page from a crowded, distractor-heavy mind"),
+}
+
+
+def _pick(prompt: str, options: list[str], given: str | None) -> str | None:
+    if given is not None:
+        return given if given in options else None
+    print(f"  {prompt}")
+    for i, o in enumerate(options, 1):
+        print(f"    {i}) {o}")
+    raw = input("  > ").strip().lower()
+    if raw.isdigit() and 1 <= int(raw) <= len(options):
+        return options[int(raw) - 1]
+    return raw if raw in options else None
+
+
 def _cmd_metrics(session: Session, args: list[str], pinned: bool, console) -> None:
-    """/metrics — pick a conflict type and run its benchmark scenario live, scoring in front of you."""
+    """/metrics — pick a metric family, then a metric, and run its benchmark live and scored."""
     from .evals import _correct, corpus_path, load_corpus
 
-    try:
-        scenarios = load_corpus(corpus_path("conflicts"))
-    except FileNotFoundError:
-        print("  no conflicts corpus found")
-        return
-    types = ["static", "dynamic", "conditional", "all"]
+    fam_names = list(_METRIC_FAMILIES)
     if args:
-        choice = args[0].lower()
+        family = args[0].lower()
     else:
-        print("  which conflict metric?")
-        for i, t in enumerate(types, 1):
-            print(f"    {i}) {t}")
-        pick = input("  metric> ").strip().lower()
-        choice = types[int(pick) - 1] if pick.isdigit() and 1 <= int(pick) <= len(types) else pick
-    if choice not in types:
+        print("  which metric family?")
+        for i, n in enumerate(fam_names, 1):
+            print(f"    {i}) {n} - {_METRIC_FAMILIES[n][2]}")
+        raw = input("  > ").strip().lower()
+        family = fam_names[int(raw) - 1] if raw.isdigit() and 1 <= int(raw) <= len(fam_names) else raw
+    if family not in _METRIC_FAMILIES:
         print("  (cancelled)")
         return
-    selected = scenarios if choice == "all" else [s for s in scenarios if s.get("conflict_type") == choice]
-    if not selected:
-        print(f"  no '{choice}' scenario")
+    corpus, submenu, _ = _METRIC_FAMILIES[family]
+    scenarios = load_corpus(corpus_path(corpus))
+
+    tag = family
+    if submenu:  # a second level (conflict: static / dynamic / conditional / all)
+        sub = _pick(f"which {family} metric?", submenu, args[1].lower() if len(args) > 1 else None)
+        if sub is None:
+            print("  (cancelled)")
+            return
+        if sub != "all":
+            scenarios = [s for s in scenarios if s.get("conflict_type") == sub]
+        tag = f"{family}-{sub}"
+    if not scenarios:
+        print("  no scenarios for that metric")
         return
 
     from . import profiles
 
     prev = session.profile_name
-    session.load_profile(profiles.mind_dir(f"metrics-{choice}"))  # a throwaway mind, never your own
-    session.profile_name = f"metrics-{choice}"
+    session.load_profile(profiles.mind_dir(f"metrics-{tag}"))  # a throwaway mind, never your own
+    session.profile_name = f"metrics-{tag}"
     try:
-        for sc in selected:
+        for sc in scenarios:
             _run_metric_scenario(session, sc, pinned, console, _correct)
     except KeyboardInterrupt:
         print("\n  (metrics cancelled)")
@@ -490,7 +516,7 @@ def _cmd_metrics(session: Session, args: list[str], pinned: bool, console) -> No
         session.running_note = None
         if pinned:
             _paint_header(console, session)
-    print(f"\n  done - metrics ran in profile 'metrics-{choice}'. /profile {prev} to return to your mind")
+    print(f"\n  done - ran in profile 'metrics-{tag}'. /profile {prev} to return to your mind")
 
 
 def _cmd_persona(session: Session, args: list[str], pinned: bool, console) -> None:
