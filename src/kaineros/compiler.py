@@ -12,12 +12,18 @@ Implement per docs/tasks.md T2-T4 and Slice 4.5. Tests: tests/test_store.py, tes
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import replace
 
 from .interfaces import Judge
 from .schema import Candidate, CompileReport, Page, Question
 from .store import Store
+
+
+def _norm(text: str) -> str:
+    """Normalised form for exact-restatement detection: case, punctuation, spacing removed."""
+    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
 
 
 class Compiler:
@@ -43,11 +49,52 @@ class Compiler:
     def _verdict(self, kind: str, gene: str, a: Candidate, b: Candidate) -> bool:
         key = (kind, gene, a.content, b.content)
         if key not in self._verdicts:
-            if kind == "conflicts":
+            shortcut = self._shortcut(kind, a, b)
+            if shortcut is not None:
+                self._verdicts[key] = shortcut
+            elif kind == "conflicts":
                 self._verdicts[key] = self.judge.conflicts(a, b)
             else:
                 self._verdicts[key] = getattr(self.judge, kind)(gene, a, b)
         return self._verdicts[key]
+
+    @staticmethod
+    def _shortcut(kind: str, a: Candidate, b: Candidate) -> bool | None:
+        """T19, the deterministic pre-comparator: settle a comparison from the candidates' own
+        text/metadata when the answer is near-certain; ``None`` sends the pair to the model.
+
+        Every rule is CONSERVATIVE — a wrong deterministic verdict is never re-examined, so a
+        shortcut only fires where it can't plausibly be wrong, and each falls on the
+        non-destructive side (don't fuse, don't queue a question) when it declines a pair:
+
+        - identical normalised text: the same account, the same claim, no conflict, and never
+          strictly "better" than itself.
+        - same_claim only: zero content-token overlap (same tokeniser the fast brain routes
+          with) → not one claim. A false "not same" here merely skips a fusion — the wiki stays
+          one page less tidy; nothing is lost and no answer changes.
+        - conflicts gets NO overlap shortcut: facts can collide without sharing a single word
+          ("i work as a backend engineer" / "i'm on the platform team now" — the spec test in
+          tests/test_modes.py pins exactly this), and the cost of a missed conflict is a missed
+          question to the user. Irreducibly semantic → always the model's call.
+        - everything else — genuinely semantic questions ("gone off Thai" vs "Thai is my
+          favourite") — is exactly what the deep model is FOR.
+        """
+        same_text = _norm(a.content) == _norm(b.content)
+        if kind == "same_account":
+            return True if same_text else None
+        if kind == "better":
+            return False if same_text else None  # strict wins only; otherwise the judge ranks
+        if kind == "conflicts":
+            return False if same_text else None  # identical text can't disagree with itself
+        if kind == "same_claim":
+            if same_text:
+                return True
+            from .runtime import _tokens  # one definition of "content words" for both brains
+
+            if not (_tokens(a.content) & _tokens(b.content)):
+                return False
+            return None
+        return None
 
     def insert(self, candidate: Candidate) -> None:
         """Place `candidate` into ``store.pool[candidate.gene]``, keeping the list best-first

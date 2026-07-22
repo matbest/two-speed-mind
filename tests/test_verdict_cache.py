@@ -16,21 +16,26 @@ class TallyJudge(FakeJudge):
     def __init__(self, **kw) -> None:
         super().__init__(**kw)
         self.calls = 0
+        self.by_kind: dict[str, int] = {}
+
+    def _count(self, kind: str) -> None:
+        self.calls += 1
+        self.by_kind[kind] = self.by_kind.get(kind, 0) + 1
 
     def better(self, gene, a, b):
-        self.calls += 1
+        self._count("better")
         return super().better(gene, a, b)
 
     def same_claim(self, gene, a, b):
-        self.calls += 1
+        self._count("same_claim")
         return super().same_claim(gene, a, b)
 
     def same_account(self, gene, a, b):
-        self.calls += 1
+        self._count("same_account")
         return super().same_account(gene, a, b)
 
     def conflicts(self, a, b):
-        self.calls += 1
+        self._count("conflicts")
         return super().conflicts(a, b)
 
 

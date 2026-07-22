@@ -267,10 +267,16 @@ rankings/element (6.8x), scores unchanged; tests/test_verdict_cache.py holds the
 ("repeat passes cost zero new calls"). Verdicts survive a mid-run judge swap by design — they're
 about the facts, and re-litigating settled pairs would reintroduce the churn.
 
-**T19. Deterministic pre-comparator.** Settle FIRST-TIME comparisons from candidate metadata
-before asking a model at all: normalised-text equality → same_account; `supersedes` + timestamps
-→ ordering; different-gene trivial cases. The remaining judge calls after T18 are all first-asks
-— this trims those. Testable on the fakes with the same counting instrument.
+**T19 (done): deterministic pre-comparator.** `Compiler._shortcut` settles near-certain
+first-time comparisons in code: identical normalised text → same account / same claim / no
+conflict / never "better"; zero content-token overlap (the runtime's own tokeniser) → not the
+same claim (a false negative merely skips a fusion — non-destructive). **conflicts gets NO
+overlap shortcut**: tests/test_modes.py pins a zero-overlap semantic collision ("backend
+engineer" / "platform team"), so conflict detection stays the model's call — the suite caught
+the over-eager first draft, which is the point of the suite. Measured on `/bench sample`:
+18 → 11 judge calls, 2.2 rankings/element (from 24.6 uninstrumented — 11x total with T18);
+same_claim sweeps 8 → 1. Remaining cost frontier: the conflicts sweep — irreducibly semantic,
+so the lever is scoping (only NEW/changed pages per pass; stakes-gating), not shortcutting.
 
 ## Later (from the paper's §9 — not yet)
 
