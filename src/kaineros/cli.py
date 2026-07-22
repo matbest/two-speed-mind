@@ -739,7 +739,11 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
             f.write(json.dumps(r) + "\n")
     print(f"  rows -> {path}")
     if session.store_dir is not None:
-        print(f"  wiki -> {Path(session.store_dir) / 'kainome'}  (browse what it built)")
+        wiki = Path(session.store_dir) / "kainome"
+        print(f"  wiki -> {wiki}")
+        if wiki.exists():  # ctrl+clickable in Windows Terminal / VS Code
+            index = wiki / "index.md"
+            print(f"          {(index if index.exists() else wiki).as_uri()}  (ctrl+click to open)")
     print(f"  done - ran in profile '{target}'. /profile {prev} to return to your mind")
 
 
