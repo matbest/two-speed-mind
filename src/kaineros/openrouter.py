@@ -138,7 +138,8 @@ def _request(path: str, body: dict | None = None) -> dict:
     raise RuntimeError("openrouter: retries exhausted")
 
 
-def _chat(model, system, user, schema=None, max_tokens=1024, meter=None) -> str:
+def _chat(model, system, user, schema=None, max_tokens=1024, meter=None,
+          brain="deep", purpose="?") -> str:
     body: dict = {
         "model": model,
         "max_tokens": max_tokens,
@@ -165,10 +166,16 @@ def _chat(model, system, user, schema=None, max_tokens=1024, meter=None) -> str:
             + json.dumps(schema)
         )
         data = _request("/chat/completions", body)
+    u = data.get("usage") or {}
+    total = u.get("total_tokens") or (u.get("prompt_tokens", 0) + u.get("completion_tokens", 0))
     if meter is not None:
-        u = data.get("usage") or {}
-        meter.add(u.get("total_tokens") or (u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)))
-    return data["choices"][0]["message"].get("content") or ""
+        meter.add(total)
+    content = data["choices"][0]["message"].get("content") or ""
+    from . import calllog  # record exactly what crossed the wire (incl. any fallback rewrite)
+
+    calllog.log(brain, "openrouter", model, purpose,
+                system, body["messages"][1]["content"], content, tokens=total or None)
+    return content
 
 
 def _json(content: str) -> dict:
@@ -230,7 +237,8 @@ class OpenRouterJudge:
         # free models occasionally emit degenerate output — retry once, then default to the
         # conservative verdict (incumbent defends / not-same); never crash a housekeeping pass
         for _ in range(2):
-            content = _chat(self.model, JUDGE_SYSTEM, question, schema=_bool_schema(field), meter=self.meter)
+            content = _chat(self.model, JUDGE_SYSTEM, question, schema=_bool_schema(field),
+                            meter=self.meter, brain="deep", purpose=f"judge.{field}")
             try:
                 return bool(_json(content).get(field, False))
             except ValueError:
@@ -274,6 +282,8 @@ class OpenRouterSlowModel:
                 schema=EXTRACT_SCHEMA,
                 max_tokens=4096,
                 meter=self.meter,
+                brain="deep",
+                purpose="extract",
             )
             try:
                 items = _json(content).get("candidates", [])
@@ -293,5 +303,5 @@ class OpenRouterFastModel:
     def answer(self, question: str, pages: list[Page], buffer: list[Turn]) -> str:
         return _chat(
             self.model, PHRASE_SYSTEM, phrase_user(question, pages, buffer),
-            max_tokens=300, meter=self.meter,
+            max_tokens=300, meter=self.meter, brain="fast", purpose="phrase",
         ).strip()

@@ -67,7 +67,7 @@ def _exe() -> str:
     return path
 
 
-def _ask(system: str, user: str, model: str = DEEP_MODEL, meter=None) -> str:
+def _ask(system: str, user: str, model: str = DEEP_MODEL, meter=None, purpose: str = "?") -> str:
     """One subscription-billed model call. Returns the reply text; meters total tokens."""
     proc = subprocess.run(
         [
@@ -101,14 +101,18 @@ def _ask(system: str, user: str, model: str = DEEP_MODEL, meter=None) -> str:
                 f"asked) and retry. [{result[:200]}]"
             )
         raise ClaudeCLIError(f"claude -p error: {result[:300]}")
+    u = data.get("usage") or {}
+    total = (
+        u.get("input_tokens", 0)
+        + u.get("cache_creation_input_tokens", 0)
+        + u.get("cache_read_input_tokens", 0)
+        + u.get("output_tokens", 0)
+    )
     if meter is not None:
-        u = data.get("usage") or {}
-        meter.add(
-            u.get("input_tokens", 0)
-            + u.get("cache_creation_input_tokens", 0)
-            + u.get("cache_read_input_tokens", 0)
-            + u.get("output_tokens", 0)
-        )
+        meter.add(total)
+    from . import calllog  # the raw transcript: exactly what was sent and what came back
+
+    calllog.log("deep", "claude-cli", model, purpose, system, user, result, tokens=total or None)
     return result
 
 
@@ -119,7 +123,7 @@ def _with_schema(user: str, schema: dict) -> str:
 
 def preflight(model: str = DEEP_MODEL) -> None:
     """Fail fast with a clear message — one tiny call proves the binary and the login."""
-    _ask("You reply with the single word: ok", "ping", model=model)
+    _ask("You reply with the single word: ok", "ping", model=model, purpose="preflight")
 
 
 class ClaudeCLIJudge:
@@ -133,7 +137,7 @@ class ClaudeCLIJudge:
         for _ in range(2):  # retry degenerate output once, then the conservative verdict
             content = _ask(
                 JUDGE_SYSTEM, _with_schema(question, _bool_schema(field)),
-                model=self.model, meter=self.meter,
+                model=self.model, meter=self.meter, purpose=f"judge.{field}",
             )
             try:
                 return bool(_json(content).get(field, False))
@@ -176,6 +180,7 @@ class ClaudeCLISlowModel:
                 _with_schema(f"Conversation turns:\n{numbered}", EXTRACT_SCHEMA),
                 model=self.model,
                 meter=self.meter,
+                purpose="extract",
             )
             try:
                 items = _json(content).get("candidates", [])

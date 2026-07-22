@@ -738,6 +738,10 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         for r in rows:
             f.write(json.dumps(r) + "\n")
     print(f"  rows -> {path}")
+    from . import calllog
+
+    if calllog.path() is not None:
+        print(f"  calls -> {calllog.path()}  (raw deep/fast model transcript)")
     if session.store_dir is not None:
         wiki = Path(session.store_dir) / "kainome"
         print(f"  wiki -> {wiki}")
@@ -897,6 +901,13 @@ def main(argv: list[str] | None = None) -> int:
     while True:
         try:
             session = _build()
+            if session.cloud:
+                # the raw transcript of every deep/fast model call this run (spec: observation
+                # only) — one JSONL per app run, next to the profiles
+                from . import calllog, profiles as _p
+
+                log_path = calllog.enable(_p._base() / "logs")
+                print(f"(call log: {log_path})")
             break
         except RateLimitedError as exc:
             if not _wait_for_reset(console, vt_ok, exc.reset_at):
