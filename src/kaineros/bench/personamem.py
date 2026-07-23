@@ -288,8 +288,12 @@ def run_slice(session, sl: Slice, say=lambda s: None, wait_idle=None) -> tuple[l
             f"({session.deep_meter.total - d0:,} deep tok, {len(session.store.pages())} page(s))")
         if i not in by_pos:
             continue
-        for _ in range(session.compiler.promote_after):  # let settled winners earn their pages
-            session.compiler.housekeep()
+        # let settled winners earn their pages (rank-only — cheap), then ONE cleanup pass to
+        # settle cross-page work. Doing full cleanup on every one of these fired 3x the judge
+        # calls on a big mind for no benefit (the pairs are unchanged between them).
+        for _ in range(session.compiler.promote_after):
+            session.compiler.housekeep(cleanup=False)
+        session.compiler.housekeep(cleanup=True)
         for probe in by_pos[i]:
             say(f"{pct()} probe: {probe.question[:60]}")
             d0, f0 = session.deep_meter.total, session.fast_meter.total

@@ -139,10 +139,12 @@ class ClaudeCLIJudge:
         self.meter = meter
 
     def _verdict(self, field: str, question: str) -> bool:
+        # a boolean verdict needs no schema — appending the full JSON schema made the model echo
+        # it back (~19% of calls, wasted). Ask for the concrete answer shape instead.
+        ask = f'{question}\n\nAnswer with ONLY this JSON: {{"{field}": true}} or {{"{field}": false}}'
         for _ in range(2):  # retry degenerate output once, then the conservative verdict
             content = _ask(
-                JUDGE_SYSTEM, _with_schema(question, _bool_schema(field)),
-                model=self.model, meter=self.meter, purpose=f"judge.{field}",
+                JUDGE_SYSTEM, ask, model=self.model, meter=self.meter, purpose=f"judge.{field}",
             )
             try:
                 return bool(_json(content).get(field, False))
