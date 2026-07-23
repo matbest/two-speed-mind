@@ -263,6 +263,10 @@ conversation into durable candidate facts about the user.
 
 Rules:
 - One candidate per distinct fact. Skip questions, chit-chat, and anything with no lasting value.
+- A single message often holds SEVERAL distinct durable facts — extract every one as its own \
+candidate, don't stop at the first or most obvious. ("I drive a Tesla and I'm allergic to nuts" \
+is two facts.) But still skip the transient: a passing state ("my car needs oil") carries no \
+lasting fact unless it implies one (that the user owns a car).
 - `gene` is a short lowercase dotted key naming the SINGLE CLAIM the fact answers, stable across \
 paraphrases: user.home_city, user.job.employer, user.daughter.name, user.pref.address_as. \
 Different claims about one topic get different keys (user.food.loves vs user.food.allergy).
