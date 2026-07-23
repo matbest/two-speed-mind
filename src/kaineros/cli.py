@@ -784,7 +784,7 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         "sample": "tiny built-in fixture (5 turns, 4 probes) - a smoke test, cheap",
         "sample-big": "bigger built-in fixture (8 sessions, ~20 turns, 10 probes) - a real workout",
         "slice-smoke": "real PersonaMem, TINY slice (3 sessions, 2 questions) - de-risks the loader",
-        "slice": "real PersonaMem, full 32k persona (~10-20 min, free on the sub) - the real thing",
+        "slice": "real PersonaMem, full 32k persona (~15-30 min on the sub, Ctrl-C-able) - the real thing",
     }
     names = list(benches)
     if args:
