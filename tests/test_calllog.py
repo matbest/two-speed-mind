@@ -108,6 +108,33 @@ def test_debug_panel_height_tracks_setting():
     assert _calls_panel_height(s) == 0
 
 
+def test_observer_fires_on_request_and_reply(monkeypatch):
+    monkeypatch.setattr(calllog, "_path", None)
+    calllog._recent.clear()
+    pings = []
+    calllog.set_observer(lambda: pings.append(len(calllog.recent())))
+    try:
+        entry = calllog.begin("deep", "b", "m", "extract", "s", "ask")
+        assert pings == [1]                 # fired the instant the request was recorded
+        calllog.finish(entry, "reply", tokens=9)
+        assert pings == [1, 1]              # and again when the reply landed
+    finally:
+        calllog.set_observer(None)
+        calllog._recent.clear()
+
+
+def test_observer_error_never_breaks_a_call(monkeypatch):
+    monkeypatch.setattr(calllog, "_path", None)
+    calllog._recent.clear()
+    calllog.set_observer(lambda: 1 / 0)  # a broken observer
+    try:
+        calllog.log("deep", "b", "m", "extract", "s", "ask", "reply")  # must not raise
+        assert len(calllog.recent()) == 1
+    finally:
+        calllog.set_observer(None)
+        calllog._recent.clear()
+
+
 def test_recent_keeps_only_the_tail(monkeypatch):
     monkeypatch.setattr(calllog, "_path", None)
     calllog._recent.clear()

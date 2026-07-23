@@ -21,6 +21,25 @@ from pathlib import Path
 
 _path: Path | None = None
 _lock = threading.Lock()
+# optional callback fired after each request (begin) and reply (finish), so a caller can repaint
+# a live view as calls happen. The callback decides for itself whether it's safe to paint (e.g.
+# only on the main thread) — calllog just pings it.
+_observer = None
+
+
+def set_observer(fn) -> None:
+    """Register (or clear, with None) a callback pinged on every begin/finish — for live views."""
+    global _observer
+    _observer = fn
+
+
+def _notify() -> None:
+    obs = _observer
+    if obs is not None:
+        try:
+            obs()
+        except Exception:
+            pass  # a paint failure must never break a model call
 # a small in-memory tail of the most recent calls, so the cockpit can show what we're asking the
 # models live. Thread-safe (same lock as the file write); the worker appends, the main thread
 # reads and paints — the panel is NEVER painted off the main thread (that corrupts the terminal).
@@ -70,6 +89,7 @@ def begin(brain: str, backend: str, model: str, purpose: str, system: str, input
     }
     with _lock:
         _recent.append(entry)  # always feeds the live panel, even if file logging is off
+    _notify()  # the request is visible now — repaint a live view if one is watching
     return entry
 
 
@@ -84,6 +104,7 @@ def finish(entry: dict, output: str, tokens: int | None = None) -> None:
             rec = {k: v for k, v in entry.items() if k != "pending"}
             with open(_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    _notify()  # the reply landed — repaint a live view if one is watching
 
 
 def recent() -> list[dict]:

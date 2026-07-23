@@ -863,10 +863,24 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
                 print(f"     ...still working ({time.time() - start:.0f}s elapsed, "
                       f"{session.deep_meter.total - d0:,} deep tok spent)")
 
+    # watch the calls live: bench compiles synchronously on THIS (main) thread, so the call log's
+    # observer fires here and can safely repaint the debug panel between each request/reply. When
+    # the panel is hidden, fall back to the background heartbeat instead (they'd fight over stdout).
+    watch_live = pinned and session.cloud and session.calls_lines > 0
+    main_thread = threading.main_thread()
+
+    def _observe() -> None:
+        if threading.current_thread() is main_thread:  # only the main thread may touch the cursor
+            _paint_header(console, session)
+
     rows: list[dict] = []
     stats: dict = {}
     beater = None
-    if session.cloud:
+    if watch_live:
+        from . import calllog
+
+        calllog.set_observer(_observe)
+    elif session.cloud:
         beater = threading.Thread(target=_beat, daemon=True)
         beater.start()
     try:
@@ -876,6 +890,10 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     except KeyboardInterrupt:
         print("\n  (bench cancelled - scoring what ran)")
     finally:
+        if watch_live:
+            from . import calllog
+
+            calllog.set_observer(None)
         beat_stop.set()
         if beater is not None:
             beater.join(timeout=6)
