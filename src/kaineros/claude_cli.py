@@ -69,51 +69,56 @@ def _exe() -> str:
 
 def _ask(system: str, user: str, model: str = DEEP_MODEL, meter=None, purpose: str = "?") -> str:
     """One subscription-billed model call. Returns the reply text; meters total tokens."""
-    proc = subprocess.run(
-        [
-            _exe(), "-p",
-            "--output-format", "json",
-            "--model", model,
-            "--system-prompt", system,
-            "--tools", "",  # a comparator needs no tools - and mustn't wander off to use any
-            "--no-session-persistence",
-            user,
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_env(),
-        timeout=TIMEOUT,
-    )
-    try:
-        data = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        raise ClaudeCLIError(
-            f"claude -p returned no JSON (exit {proc.returncode}): "
-            f"{(proc.stderr or proc.stdout)[:300]}"
-        ) from None
-    result = data.get("result") or ""
-    if data.get("is_error"):
-        if "authenticat" in result.lower() or "oauth" in result.lower():
-            raise ClaudeCLIError(
-                "your Claude login has expired - run `claude` in a terminal (then /login if "
-                f"asked) and retry. [{result[:200]}]"
-            )
-        raise ClaudeCLIError(f"claude -p error: {result[:300]}")
-    u = data.get("usage") or {}
-    total = (
-        u.get("input_tokens", 0)
-        + u.get("cache_creation_input_tokens", 0)
-        + u.get("cache_read_input_tokens", 0)
-        + u.get("output_tokens", 0)
-    )
-    if meter is not None:
-        meter.add(total)
     from . import calllog  # the raw transcript: exactly what was sent and what came back
 
-    calllog.log("deep", "claude-cli", model, purpose, system, user, result, tokens=total or None)
-    return result
+    entry = calllog.begin("deep", "claude-cli", model, purpose, system, user)  # show the ask now
+    result = ""
+    total = None
+    try:
+        proc = subprocess.run(
+            [
+                _exe(), "-p",
+                "--output-format", "json",
+                "--model", model,
+                "--system-prompt", system,
+                "--tools", "",  # a comparator needs no tools - and mustn't wander off to use any
+                "--no-session-persistence",
+                user,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_env(),
+            timeout=TIMEOUT,
+        )
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            result = (proc.stderr or proc.stdout)[:300]
+            raise ClaudeCLIError(
+                f"claude -p returned no JSON (exit {proc.returncode}): {result}"
+            ) from None
+        result = data.get("result") or ""
+        if data.get("is_error"):
+            if "authenticat" in result.lower() or "oauth" in result.lower():
+                raise ClaudeCLIError(
+                    "your Claude login has expired - run `claude` in a terminal (then /login if "
+                    f"asked) and retry. [{result[:200]}]"
+                )
+            raise ClaudeCLIError(f"claude -p error: {result[:300]}")
+        u = data.get("usage") or {}
+        total = (
+            u.get("input_tokens", 0)
+            + u.get("cache_creation_input_tokens", 0)
+            + u.get("cache_read_input_tokens", 0)
+            + u.get("output_tokens", 0)
+        )
+        if meter is not None:
+            meter.add(total)
+        return result
+    finally:
+        calllog.finish(entry, result, tokens=total or None)  # the reply lands in the panel
 
 
 def _with_schema(user: str, schema: dict) -> str:

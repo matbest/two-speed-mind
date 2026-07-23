@@ -70,9 +70,12 @@ def calls_panel(records: list[dict]) -> str:
         tok = f" · {r['tokens']:,} tok" if r.get("tokens") else ""
         head = f"> {r.get('brain', '?')} · {r.get('purpose', '?')}{tok}"
         body = " ".join((r.get("input") or "").split())  # collapse whitespace to pack more in
-        reply = " ".join((r.get("output") or "").split())
-        block = head + "\n" + body + (f"\n=> {reply}" if reply else "")
-        blocks.append(block)
+        if r.get("pending"):
+            tail = "\n=> ...awaiting reply..."       # request sent, model still thinking
+        else:
+            reply = " ".join((r.get("output") or "").split())
+            tail = f"\n=> {reply}" if reply else ""  # the raw reply, verbatim
+        blocks.append(head + "\n" + body + tail)
     return "\n\n".join(blocks)
 
 

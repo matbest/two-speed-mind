@@ -50,6 +50,12 @@ def log(
     output: str,
     tokens: int | None = None,
 ) -> None:
+    finish(begin(brain, backend, model, purpose, system, input_text), output, tokens)
+
+
+def begin(brain: str, backend: str, model: str, purpose: str, system: str, input_text: str) -> dict:
+    """Record the REQUEST the instant it's sent — so the live panel shows what we're asking
+    while the model is still thinking. `finish` fills in the reply. Returns the entry handle."""
     entry = {
         "at": time.time(),
         "brain": brain,
@@ -58,14 +64,25 @@ def log(
         "purpose": purpose,
         "system": system,
         "input": input_text,
-        "output": output,
-        "tokens": tokens,
+        "output": None,
+        "tokens": None,
+        "pending": True,  # awaiting the reply — the panel shows "…awaiting reply…"
     }
     with _lock:
         _recent.append(entry)  # always feeds the live panel, even if file logging is off
+    return entry
+
+
+def finish(entry: dict, output: str, tokens: int | None = None) -> None:
+    """Fill in the reply on an entry from `begin`; write the completed record to the log file."""
+    with _lock:
+        entry["output"] = output
+        entry["tokens"] = tokens
+        entry["pending"] = False
         if _path is not None:
+            rec = {k: v for k, v in entry.items() if k != "pending"}
             with open(_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
 def recent() -> list[dict]:

@@ -34,6 +34,21 @@ def test_openrouter_chat_is_transcribed(monkeypatch, tmp_path):
     monkeypatch.setattr(calllog, "_path", None)  # leave the module as we found it
 
 
+def test_pending_then_reply(monkeypatch):
+    """Two-phase: the request shows as awaiting, then the raw reply lands in the same entry."""
+    from kaineros.view import calls_panel
+
+    monkeypatch.setattr(calllog, "_path", None)
+    calllog._recent.clear()
+    entry = calllog.begin("deep", "claude-cli", "sonnet", "extract", "sys", "compile this")
+    panel = calls_panel(calllog.recent())
+    assert "compile this" in panel and "awaiting reply" in panel   # request visible immediately
+    calllog.finish(entry, '{"candidates": []}', tokens=910)
+    panel = calls_panel(calllog.recent())
+    assert "awaiting reply" not in panel and '{"candidates": []}' in panel  # raw reply landed
+    calllog._recent.clear()
+
+
 def test_recent_feeds_the_live_panel_even_with_file_off(monkeypatch):
     from kaineros.view import calls_panel
 

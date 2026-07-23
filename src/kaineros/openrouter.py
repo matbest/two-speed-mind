@@ -153,29 +153,33 @@ def _chat(model, system, user, schema=None, max_tokens=1024, meter=None,
             "type": "json_schema",
             "json_schema": {"name": "out", "strict": True, "schema": schema},
         }
-    try:
-        data = _request("/chat/completions", body)
-    except RuntimeError:
-        if schema is None:
-            raise
-        # some (mostly free) models reject response_format — fall back to asking for the JSON
-        # in the prompt; the tolerant parser handles fences/prose around it
-        body.pop("response_format", None)
-        body["messages"][1]["content"] += (
-            "\n\nRespond with ONLY a JSON object matching this schema, no other text:\n"
-            + json.dumps(schema)
-        )
-        data = _request("/chat/completions", body)
-    u = data.get("usage") or {}
-    total = u.get("total_tokens") or (u.get("prompt_tokens", 0) + u.get("completion_tokens", 0))
-    if meter is not None:
-        meter.add(total)
-    content = data["choices"][0]["message"].get("content") or ""
     from . import calllog  # record exactly what crossed the wire (incl. any fallback rewrite)
 
-    calllog.log(brain, "openrouter", model, purpose,
-                system, body["messages"][1]["content"], content, tokens=total or None)
-    return content
+    entry = calllog.begin(brain, "openrouter", model, purpose, system, user)  # show the ask now
+    content = ""
+    total = None
+    try:
+        try:
+            data = _request("/chat/completions", body)
+        except RuntimeError:
+            if schema is None:
+                raise
+            # some (mostly free) models reject response_format — fall back to asking for the JSON
+            # in the prompt; the tolerant parser handles fences/prose around it
+            body.pop("response_format", None)
+            body["messages"][1]["content"] += (
+                "\n\nRespond with ONLY a JSON object matching this schema, no other text:\n"
+                + json.dumps(schema)
+            )
+            data = _request("/chat/completions", body)
+        u = data.get("usage") or {}
+        total = u.get("total_tokens") or (u.get("prompt_tokens", 0) + u.get("completion_tokens", 0))
+        if meter is not None:
+            meter.add(total)
+        content = data["choices"][0]["message"].get("content") or ""
+        return content
+    finally:
+        calllog.finish(entry, content, tokens=total or None)  # the reply lands in the panel
 
 
 def _json(content: str) -> dict:
