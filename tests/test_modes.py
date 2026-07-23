@@ -31,9 +31,11 @@ def test_cleanup_mode_does_the_cross_page_fusion():
     comp.insert(cand("home", "berlin is where i live"))
     comp.housekeep()
     comp.insert(cand("city", "berlin flat is mine"))
-    comp.housekeep()  # both promoted
-    comp.housekeep(cleanup=True)  # now the cross-page fusion runs
+    # "city" is promoted this pass, so the eager frontier pairs it with the existing "home"
+    # (both state the "berlin" claim) and fuses at once (spec §47 — no waiting for a later sweep)
+    comp.housekeep()
     assert comp.last_report.fused == 1
+    assert (store.page("home") is None) != (store.page("city") is None)  # one survivor remains
 
 
 def test_session_runs_cleanup_only_on_the_cadence():

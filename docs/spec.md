@@ -322,4 +322,20 @@ This prototype proves the *architecture* — with the model faked — as a comma
     enters a prompt — the fast brain reads the wiki, the judge compares restatements — so the
     raw layer costs zero tokens at any size.
 
+**Grooming, not sweeping (§47) — the deep brain grooms at a constant rate**
+47. The cross-page work (fusion + conflict detection) is **not** an all-pairs O(pages²) sweep each
+    cleanup. It examines a **bounded** set of page pairs, from two sources:
+    - **Eager frontier:** the pages that CHANGED this pass (newly promoted or re-promoted) against
+      their plausible peers (same-tag, or either side untagged — §45's conservative rule). Because
+      the *second* page of any conflicting pair is a change, a fresh contradiction is caught the
+      moment it forms — no waiting. O(changed·peers), not O(pages²).
+    - **Stochastic grooming:** a constant `groom_rate` of random pairs per pass, biased toward
+      shared tags — slowly grooming the long tail (minds loaded from disk, pairs made comparable by
+      a later fission). It never asks "is everything checked?"; time does the work, evolutionarily.
+    The verdict cache (§43 in spirit) makes a re-sampled unchanged pair free, so steady-state cost
+    tracks the *churn* rate, not the *size* of the mind. The one guarantee that matters — catch a
+    brand-new contradiction now — is the eager frontier's job; everything else converges over time.
+    (Untagged minds fall back to the conservative "check every peer" path; real minds are tagged at
+    extraction, so the frontier stays small.)
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

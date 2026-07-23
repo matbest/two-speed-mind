@@ -144,11 +144,10 @@ def test_duplicate_promoted_pages_fuse_into_the_older_gene():
     comp = Compiler(store, first_word_claims(), promote_after=1)
     comp.insert(cand("home", "berlin is where i live"))
     comp.housekeep()  # "home" promoted first — it is the older key
+    assert store.page("home") is not None
     comp.insert(cand("city", "berlin flat is mine"))
-    comp.housekeep()  # "city" promoted this pass
-    assert store.page("home") is not None and store.page("city") is not None
-
-    comp.housekeep()  # both pages state the "berlin" claim -> fuse
+    # "city" promoted this pass -> eagerly paired with "home" (both state "berlin") -> fuse now
+    comp.housekeep()
     assert comp.last_report.fused == 1
     assert "city" not in store.genes()
     assert store.page("city") is None
@@ -169,9 +168,14 @@ def test_unrelated_pages_do_not_fuse():
 
 def test_fusion_only_reads_the_clean_layer():
     store = Store()
-    comp = Compiler(store, first_word_claims(), promote_after=99)  # nothing ever promotes
+    comp = Compiler(store, first_word_claims(), promote_after=99)  # contested pools never promote
+    # each gene's pool is CONTESTED (two distinct accounts), so with a high promote_after neither
+    # crosses the promotion line — the duplicate "berlin" claim stays below it, in the pool only
     comp.insert(cand("home", "berlin is where i live"))
+    comp.insert(cand("home", "berlin is my base"))
     comp.insert(cand("city", "berlin flat is mine"))
+    comp.insert(cand("city", "berlin is the city here"))
     comp.housekeep()
-    assert comp.last_report.fused == 0  # duplicates below the promotion line go unnoticed (v1)
-    assert set(store.genes()) == {"home", "city"}
+    assert store.clean == {}                             # nothing promoted
+    assert comp.last_report.fused == 0                   # so fusion (clean-only) sees nothing
+    assert set(store.genes()) == {"home", "city"}        # the duplicates persist, unfused

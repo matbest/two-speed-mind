@@ -290,13 +290,16 @@ Verify on the real backend: `/metrics conflict-hard dynamic` (dynamic-implicit s
 `/bench 2`'s conflicts count. Note: pre-tags pages on disk have no tags and always fall through
 — the deep brain re-tagging old pages during cleanup is future work.
 
-**T21. Sweep scoping — kill the quadratic (the standing cost frontier).** The two cross-page
-sweeps (`_fusion`/`_find_duplicate_pages` and `_curate`) are O(pages²) *iterations* per cleanup
-pass. Verdict cache (T18) mutes repeats and tag scoping (T20) skips disjoint-topic pairs, but a
-pass that promotes K new pages still checks each against all N existing ones in one burst. Fix:
-scope each sweep to a **new/changed-since-last-pass frontier** — O(K·N) per pass, not O(N²).
-Contained change (both sweeps take the frontier), testable on the fakes with the counting judge;
-`/bench 2`'s judge-call count is the before/after proof.
+**T21 (done): grooming, not sweeping (spec §47).** The two cross-page sweeps no longer iterate
+all pairs. `_pairs_to_check(changed_genes)` builds a bounded set: the **eager frontier** (changed
+pages × plausible peers — same-tag or either-side-untagged) catches fresh conflicts the moment
+their second page lands; plus `groom_rate` **random** pairs (tag-biased) grooming the long tail.
+`_fusion`/`_curate` consume that set. Fusion moved AFTER promotion (so it's eager, no one-pass
+lag — three timing tests updated to match). Proven on the fakes: judge calls stay flat as pages
+grow 10→60 (tests/test_groomer.py), a fresh conflict is caught eagerly, an old one in a quiet
+mind is caught within a bounded number of grooming passes. On real (tagged) minds the frontier
+stays small; untagged minds fall back to the conservative check-every-peer path. Next: cap the
+verdict cache (LRU) so its memory doesn't creep toward O(pages²) on a long-lived mind.
 
 **T22. Wiki in Open Knowledge Format (deferred, low-risk).** Render the kainome in Google's OKF
 (cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing)

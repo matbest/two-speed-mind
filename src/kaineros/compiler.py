@@ -12,6 +12,7 @@ Implement per docs/tasks.md T2-T4 and Slice 4.5. Tests: tests/test_store.py, tes
 """
 from __future__ import annotations
 
+import random
 import re
 import time
 from dataclasses import replace
@@ -28,12 +29,21 @@ def _norm(text: str) -> str:
 
 class Compiler:
     def __init__(
-        self, store: Store, judge: Judge, promote_after: int = 3, split_after: int = 8
+        self, store: Store, judge: Judge, promote_after: int = 3, split_after: int = 8,
+        groom_rate: int = 8, seed: int | None = None
     ) -> None:
         self.store = store
         self.judge = judge
         self.promote_after = promote_after
         self.split_after = split_after
+        # cross-page grooming (spec §47): instead of an O(pages²) all-pairs sweep every cleanup,
+        # examine only a BOUNDED set of pairs — the changed pages against their peers (eager, so a
+        # fresh conflict is caught the moment its second page appears), plus `groom_rate` random
+        # pairs biased to shared tags (stochastic grooming of the long tail). Constant-ish per
+        # pass; the verdict cache makes re-sampled unchanged pairs free, so cost tracks churn, not
+        # size. `seed` makes the sampling reproducible for tests.
+        self.groom_rate = groom_rate
+        self._rng = random.Random(seed)
         self.last_report = CompileReport()  # the deep brain's receipt (spec §19)
         self._inserted_since_pass = 0
         # verdict cache (T18): a verdict about an unchanged pair never expires. Housekeeping
@@ -127,8 +137,9 @@ class Compiler:
 
         - **rank** (always, cheap, per-pool): dedup restatements, split mixed pools, promote
           settled winners. No cross-page comparison.
-        - **cleanup** (``cleanup=True``, expensive, cross-page): fusion + conflict detection —
-          O(pages²) judge calls. Gated so the caller can run it on a cadence, not every turn.
+        - **cleanup** (``cleanup=True``, cross-page): fusion + conflict detection over a BOUNDED
+          set of page pairs (spec §47) — the pass's changed pages against their peers, plus a
+          few random pairs. Constant-ish, not O(pages²). Gated to a cadence by the caller.
 
         Returns newly promoted pages; the full tally lands in ``self.last_report``.
         """
@@ -137,8 +148,6 @@ class Compiler:
             merged += self._dedup(gene, pool)  # rank: per-pool, cheap
         for gene in list(self.store.pool):
             split += self._fission(gene)        # rank: per-pool
-        if cleanup:
-            fused = self._fusion()              # cleanup: cross-page, O(pages²)
 
         promoted: list[Page] = []
         for gene, pool in self.store.pool.items():
@@ -167,8 +176,13 @@ class Compiler:
                 self.store.clean[gene] = new_page
                 promoted.append(new_page)
 
-        if cleanup:  # cleanup: cross-page conflict detection (spec §36), O(pages²)
-            queued = self._curate()
+        if cleanup:
+            # cross-page work over a BOUNDED pair set (spec §47): the pages that CHANGED this pass
+            # (eager — catches a fresh conflict the moment its second page lands) + random pairs
+            # (grooms the long tail). Fusion first (it may retire a page), then conflict curation.
+            pairs = self._pairs_to_check([p.gene for p in promoted])
+            fused = self._fusion(pairs)
+            queued = self._curate(pairs)
         self.last_report = CompileReport(
             inserted=self._inserted_since_pass,
             merged=merged,
@@ -180,44 +194,81 @@ class Compiler:
         self._inserted_since_pass = 0
         return promoted
 
-    def _curate(self) -> int:
-        """Queue a disambiguation question for each conflicting pair of promoted pages (spec §36).
+    def _pairs_to_check(self, changed_genes: list[str]) -> list[tuple[str, str]]:
+        """The bounded set of promoted-page pairs this cleanup examines (spec §47).
 
-        Grounded and non-destructive: the question text is built from the two pages' own words,
-        both pages keep serving, and the user's answer resolves it through normal competition.
-        Deduped — one pending question per conflict.
+        Two sources, deduped, each pair ordered by promotion order (older gene first, so fusion
+        keeps the older key):
+
+        - **eager:** every CHANGED page (newly promoted or re-promoted this pass) against each
+          peer it could plausibly clash with — same-tag peers, or either side untagged
+          (conservative, §45). This is why a fresh conflict is caught at once: the *second* page
+          of any conflicting pair changes, and gets paired with the first here. O(changed·peers),
+          not O(pages²).
+        - **stochastic:** `groom_rate` random pairs, biased toward shared tags — grooms the long
+          tail (loaded minds, pairs that became comparable without a promotion event). Constant
+          per pass; the verdict cache makes unchanged re-samples free.
+        """
+        genes = list(self.store.clean)  # dict order = promotion order
+        if len(genes) < 2:
+            return []
+        idx = {g: i for i, g in enumerate(genes)}
+
+        def _ordered(x: str, y: str) -> tuple[str, str]:
+            return (x, y) if idx[x] <= idx[y] else (y, x)
+
+        def _could_clash(ta: tuple, tb: tuple) -> bool:
+            return not ta or not tb or bool(set(ta) & set(tb))  # untagged either side → maybe
+
+        pairs: set[tuple[str, str]] = set()
+        for g in changed_genes:
+            if g not in self.store.clean:
+                continue
+            tg = self.store.clean[g].tags
+            for other in genes:
+                if other != g and _could_clash(tg, self.store.clean[other].tags):
+                    pairs.add(_ordered(g, other))
+
+        for _ in range(self.groom_rate):
+            g = self._rng.choice(genes)
+            peers = [o for o in genes if o != g]
+            tg = set(self.store.clean[g].tags)
+            same = [o for o in peers if tg & set(self.store.clean[o].tags)] if tg else []
+            pool = same if (same and self._rng.random() < 0.8) else peers  # bias to shared tags
+            pairs.add(_ordered(g, self._rng.choice(pool)))
+        return list(pairs)
+
+    def _curate(self, pairs: list[tuple[str, str]]) -> int:
+        """Queue a disambiguation question for each conflicting pair (spec §36), over the bounded
+        pair set. Grounded and non-destructive: the question is built from the pages' own words,
+        both pages keep serving, and the user's answer resolves it through competition. Deduped.
         """
         queued = 0
-        genes = list(self.store.clean)
-        for i in range(len(genes)):
-            for j in range(i + 1, len(genes)):
-                ga, gb = genes[i], genes[j]
-                pa, pb = self.store.clean[ga], self.store.clean[gb]
-                # tag scoping (spec §45): when BOTH pages declared their topics and the topics
-                # are disjoint, they can't be in collision — skip the model call. Either side
-                # untagged → fall through to the judge (conservative; the spec's zero-overlap
-                # collision case stays covered because its facts share a topic tag).
-                if pa.tags and pb.tags and not set(pa.tags) & set(pb.tags):
-                    continue
-                a = Candidate(gene=ga, content=pa.content, provenance=pa.provenance)
-                b = Candidate(gene=gb, content=pb.content, provenance=pb.provenance)
-                if self._verdict("same_claim", ga, a, b):
-                    continue  # fusion's job, not a question
-                if not self._verdict("conflicts", "", a, b):
-                    continue
-                if self.store.has_question_for((ga, gb)):
-                    continue  # already pending — don't nag twice
-                self.store.questions.append(
-                    Question(
-                        text=(
-                            f"You've told me both: \"{pa.content}\" and \"{pb.content}\". "
-                            "Which is right — or are both true?"
-                        ),
-                        genes=(ga, gb),
-                        created_at=time.time(),
-                    )
+        for ga, gb in pairs:
+            if ga not in self.store.clean or gb not in self.store.clean:
+                continue  # a fusion earlier this pass retired one of them
+            pa, pb = self.store.clean[ga], self.store.clean[gb]
+            if pa.tags and pb.tags and not set(pa.tags) & set(pb.tags):
+                continue  # tag scoping (§45): declared, disjoint topics can't collide
+            a = Candidate(gene=ga, content=pa.content, provenance=pa.provenance)
+            b = Candidate(gene=gb, content=pb.content, provenance=pb.provenance)
+            if self._verdict("same_claim", ga, a, b):
+                continue  # fusion's job, not a question
+            if not self._verdict("conflicts", "", a, b):
+                continue
+            if self.store.has_question_for((ga, gb)):
+                continue  # already pending — don't nag twice
+            self.store.questions.append(
+                Question(
+                    text=(
+                        f"You've told me both: \"{pa.content}\" and \"{pb.content}\". "
+                        "Which is right — or are both true?"
+                    ),
+                    genes=(ga, gb),
+                    created_at=time.time(),
                 )
-                queued += 1
+            )
+            queued += 1
         return queued
 
     # -- the maintenance steps ---------------------------------------------------------------
@@ -296,20 +347,20 @@ class Compiler:
             self._place(new_gene, target, c)
         return 1
 
-    def _fusion(self) -> int:
-        """Merge genes whose *promoted pages* state one claim (spec §10) — split-brain repair.
-
-        The earlier-promoted gene key survives; both pools re-rank into it (`wins` reset) and the
-        merged pool re-earns promotion. Destructive, so cautious: the verdict is asked both ways
-        round, and the survivor's page keeps serving through the contest — only the absorbed page
-        retires. A false fusion narrows the wiki by one page, never empties it.
+    def _fusion(self, pairs: list[tuple[str, str]]) -> int:
+        """Merge genes whose *promoted pages* state one claim (spec §10) — split-brain repair,
+        over the bounded pair set. The earlier-promoted gene key survives; both pools re-rank into
+        it (`wins` reset) and the merged pool re-earns promotion. Destructive, so cautious: the
+        verdict is asked both ways round, and the survivor's page keeps serving through the
+        contest — only the absorbed page retires. A false fusion narrows the wiki by one page,
+        never empties it. (A merge that opens up a fresh duplicate is caught a later pass.)
         """
         fused = 0
-        while True:
-            pair = self._find_duplicate_pages()
-            if pair is None:
-                return fused
-            survivor, absorbed = pair
+        for survivor, absorbed in pairs:  # ordered older-first: the older key survives
+            if survivor not in self.store.clean or absorbed not in self.store.clean:
+                continue  # a prior merge this pass already consumed one of them
+            if not self._is_duplicate(survivor, absorbed):
+                continue
             pool = self.store.pool.setdefault(survivor, [])
             incoming = self.store.pool.pop(absorbed, [])
             self.store.clean.pop(absorbed, None)  # survivor's page keeps serving (§6's rule)
@@ -320,25 +371,18 @@ class Compiler:
                 c.wins = 0
                 self._place(survivor, pool, c)
             fused += 1
+        return fused
 
-    def _find_duplicate_pages(self) -> tuple[str, str] | None:
-        genes = list(self.store.clean)  # dict order = promotion order; the older key survives
-        for i in range(len(genes)):
-            for j in range(i + 1, len(genes)):
-                p1, p2 = self.store.clean[genes[i]], self.store.clean[genes[j]]
-                # tag scoping (spec §45), same rule as the conflicts sweep: two pages stating
-                # ONE claim must share a topic — both tagged + disjoint topics -> not a
-                # duplicate, no model call. Either side untagged falls through to the judge.
-                if p1.tags and p2.tags and not set(p1.tags) & set(p2.tags):
-                    continue
-                a = Candidate(gene=p1.gene, content=p1.content, provenance=p1.provenance)
-                b = Candidate(gene=p2.gene, content=p2.content, provenance=p2.provenance)
-                # asked both ways round: fusion is destructive, one noisy verdict must not fire it
-                if self._verdict("same_claim", genes[i], a, b) and self._verdict(
-                    "same_claim", genes[j], b, a
-                ):
-                    return genes[i], genes[j]
-        return None
+    def _is_duplicate(self, ga: str, gb: str) -> bool:
+        p1, p2 = self.store.clean[ga], self.store.clean[gb]
+        # tag scoping (spec §45): two pages stating ONE claim must share a topic — both tagged +
+        # disjoint topics → not a duplicate, no model call. Either side untagged falls through.
+        if p1.tags and p2.tags and not set(p1.tags) & set(p2.tags):
+            return False
+        a = Candidate(gene=p1.gene, content=p1.content, provenance=p1.provenance)
+        b = Candidate(gene=p2.gene, content=p2.content, provenance=p2.provenance)
+        # asked both ways round: fusion is destructive, one noisy verdict must not fire it
+        return self._verdict("same_claim", ga, a, b) and self._verdict("same_claim", gb, b, a)
 
     def _fresh_gene(self, gene: str) -> str:
         n = 2
