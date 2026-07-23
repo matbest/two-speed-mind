@@ -49,7 +49,10 @@ def test_update_jumps_to_the_top_on_insert():
     store = Store()
     comp = Compiler(store, FakeJudge(key=lambda c: c.provenance.created_at))
     comp.insert(entrenched("job", "acme", score=9))          # strong incumbent
-    comp.insert(entrenched("job", "stray", score=1))          # stray -> ranked below
+    comp.insert(entrenched("job", "stray", score=1))          # stray
+    comp.housekeep()                                         # grooming ranks acme back on top
     assert store.candidates("job")[0].content == "acme"
-    comp.insert(update("job", "initech"))                    # update -> straight to #1
+    comp.insert(update("job", "initech"))                    # a deliberate update -> #1 at ingest
+    assert store.candidates("job")[0].content == "initech"
+    comp.housekeep()                                         # pinned: grooming keeps it on top
     assert store.candidates("job")[0].content == "initech"

@@ -128,29 +128,15 @@ class Compiler:
         return None
 
     def insert(self, candidate: Candidate) -> None:
-        """Place `candidate` into ``store.pool[candidate.gene]``, keeping the list best-first
-        according to ``judge.better``.
-
-        Use binary insertion (~log n comparisons). The current top must be *beaten* to be
-        displaced — the incumbent defends its position. A candidate that loses is not thrown away;
-        it stays in the pool at its ranked place (it can win again later).
-
-        Deliberately cheap: no identity checks here — repair work belongs to housekeep (spec §11).
-
-        Low-stakes candidates (persona/style — spec §4) skip judging entirely: the newest account
-        goes straight to the top, because for style recency *is* the right answer, and trivia is
-        not worth judge calls.
-
-        See docs/tasks.md T2, T3, T8.
-        """
+        """Append-only ingest (spec §49): drop `candidate` into its pool with NO comparison —
+        ingest must be cheap and linear. It goes to the FRONT, so the pool is newest-first (a good
+        provisional order: recency is the right first guess, and it means a fresh update and a
+        deliberate `supersedes`/low-stakes fact both land on top ready to promote). Ranking is no
+        longer done here — the groomer's bubble pass (`_bubble`) sorts the pool one O(n) pass at a
+        time, off the ingest path. See docs/tasks.md T2, T3, T8; the old binary-insertion moved to
+        grooming."""
         pool = self.store.pool.setdefault(candidate.gene, [])
-        prov = candidate.provenance
-        if prov.stakes == "low" or prov.supersedes:
-            # low-stakes style, or a DELIBERATE update ("as of today… not X") — believe the newest
-            # immediately, straight to the top, past the incumbent's defence (spec §42)
-            pool.insert(0, candidate)
-        else:
-            self._place(candidate.gene, pool, candidate)
+        pool.insert(0, candidate)  # newest first; the judge never runs at ingest now
         self._inserted_since_pass += 1
 
     def housekeep(self, cleanup: bool = True) -> list[Page]:
@@ -167,6 +153,8 @@ class Compiler:
         merged = split = fused = queued = 0
         for gene, pool in self.store.pool.items():
             merged += self._dedup(gene, pool)  # rank: per-pool, cheap
+        for gene, pool in self.store.pool.items():
+            self._bubble(gene, pool)            # rank: ONE O(n) sorting pass (spec §49)
         for gene in list(self.store.pool):
             split += self._fission(gene)        # rank: per-pool
 
@@ -300,6 +288,25 @@ class Compiler:
         return queued
 
     # -- the maintenance steps ---------------------------------------------------------------
+
+    def _bubble(self, gene: str, pool: list[Candidate]) -> int:
+        """One ranking pass (spec §49): compare each ADJACENT pair once and bubble the better one
+        up. This is O(n) — every element compared once, NOT every pair — so a pool settles over
+        successive grooms, not in a single expensive sort. Verdicts are cached, so re-passing an
+        unchanged pool is free; only new neighbours cost a call.
+
+        A pinned candidate — a deliberate `supersedes` update or a low-stakes style fact (spec
+        §4/§42, 'believe the newest now') — is never bubbled DOWN past the fact below it.
+        """
+        swaps = 0
+        for i in range(len(pool) - 1):
+            a, b = pool[i], pool[i + 1]
+            if a.provenance.supersedes or a.provenance.stakes == "low":
+                continue  # pinned: a comparison must not demote a believed-now fact
+            if self._verdict("better", gene, b, a):  # b beats the incumbent a -> bubble b up
+                pool[i], pool[i + 1] = b, a
+                swaps += 1
+        return swaps
 
     def _place(self, gene: str, pool: list[Candidate], candidate: Candidate) -> None:
         """Binary-insert by the judge; strict wins only, so the incumbent defends."""

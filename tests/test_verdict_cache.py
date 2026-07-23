@@ -80,7 +80,6 @@ def test_cached_verdicts_still_rank_correctly():
     comp.insert(_cand("g", "short"))
     comp.insert(_cand("g", "a much longer and therefore better account"))
     comp.insert(_cand("g", "short"))  # identical content: verdicts come from the cache
-    pool = comp.store.pool["g"]
-    assert pool[0].content.startswith("a much longer")
-    comp.housekeep()
+    for _ in range(3):
+        comp.housekeep()  # ranking is the groomer's job now (spec §49); cache reused for dups
     assert comp.store.pool["g"][0].content.startswith("a much longer")

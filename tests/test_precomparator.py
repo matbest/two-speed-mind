@@ -69,7 +69,8 @@ def test_identical_content_is_never_better():
 
 def test_behaviour_unchanged_where_the_judge_does_decide():
     comp, judge = _build()  # FakeJudge: longer content wins
-    comp.insert(_cand("g", "short claim words"))
-    comp.insert(_cand("g", "short claim words plus rather more detail"))
-    assert comp.store.pool["g"][0].content.endswith("more detail")  # judge ranked, as before
+    comp.insert(_cand("g", "short claim words plus rather more detail"))  # longer, inserted first
+    comp.insert(_cand("g", "short claim words"))  # shorter + newest -> on top by recency
+    comp.housekeep()  # the groomer's bubble pass must demote the newer-but-shorter one
+    assert comp.store.pool["g"][0].content.endswith("more detail")  # judge decided the rank
     assert judge.calls > 0

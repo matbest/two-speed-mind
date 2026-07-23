@@ -360,4 +360,17 @@ This prototype proves the *architecture* — with the model faked — as a comma
     the fast brain reads them. (The triples are also the natural bridge to a knowledge-graph / OKF
     rendering of the kainome — they're already there.)
 
+**Append-only ingest; ranking is grooming (§49)**
+49. Ingest does **no comparison**. `insert()` drops a candidate into its pool at the front
+    (newest-first — recency is the right provisional guess) in O(1), with zero judge calls, so
+    taking in a whole conversation costs only the extraction calls. All ranking is the groomer's
+    job, done **one O(n) pass at a time**: `_bubble` walks a pool once, compares each ADJACENT
+    pair, and bubbles the better one up — *every element compared once, never every pair*. A pool
+    settles over successive grooms, not in a single expensive sort; cached verdicts make
+    re-passing an unchanged pool free. A pinned candidate (a deliberate `supersedes` update or a
+    low-stakes style fact — §4/§42) is never bubbled down. This completes the grooming philosophy
+    of §47: *all* comparison — rank, dedup, fuse, resolve — is now off the ingest path, running at
+    a constant rate in the background. The wiki is *eventually* ordered; for real use (ingest now,
+    query later) that is invisible and ideal.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

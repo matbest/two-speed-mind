@@ -19,18 +19,24 @@ def make_compiler(promote_after: int = 3):
     return store, Compiler(store, judge, promote_after=promote_after)
 
 
-def test_insert_orders_by_judge():
+def test_grooming_orders_by_judge():
+    # ingest is append-only (spec §49): the judge never runs at insert; ranking emerges over
+    # groom passes. The pool is newest-first until then.
     store, comp = make_compiler()
     comp.insert(cand("food", "b", score=2))
     comp.insert(cand("food", "a", score=5))
     comp.insert(cand("food", "c", score=1))
-    assert [c.content for c in store.candidates("food")] == ["a", "b", "c"]  # best first
+    assert store.candidates("food")[0].content == "c"  # newest, provisional
+    for _ in range(3):
+        comp.housekeep()  # bubble passes sort it
+    assert [c.content for c in store.candidates("food")] == ["a", "b", "c"]  # best first, groomed
 
 
 def test_incumbent_defends():
     store, comp = make_compiler()
     comp.insert(cand("food", "top", score=5))
-    comp.insert(cand("food", "weak", score=1))
+    comp.insert(cand("food", "weak", score=1))  # newer but weaker
+    comp.housekeep()  # a groom pass re-ranks: the stronger fact wins, recency doesn't override
     assert store.top("food").content == "top"
 
 
