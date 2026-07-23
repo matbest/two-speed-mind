@@ -825,6 +825,7 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     session.profile_name = target
     session.wipe()
     d0, f0 = session.deep_meter.total, session.fast_meter.total
+    run_start = time.time()  # wall-clock for the whole run (it's subprocess-latency bound)
     n_turns = sum(len(s) for s in sl.sessions)
     print(f"  {sl.name}: {len(sl.sessions)} session(s), {n_turns} turn(s), {len(sl.probes)} probe(s)")
 
@@ -914,7 +915,12 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     for line in personamem.summarise(rows, stats):
         print("  " + line)
     dtok, ftok = session.deep_meter.total - d0, session.fast_meter.total - f0
+    elapsed = time.time() - run_start
+    calls = (stats.get("judge_calls", {}) or {}).get("total", 0) + len(sl.sessions)  # judge + extracts
+    per = f", ~{elapsed / calls:.1f}s/call" if calls else ""
+    mins = f"{int(elapsed // 60)}m {int(elapsed % 60)}s" if elapsed >= 60 else f"{elapsed:.0f}s"
     print(f"  cost {dtok:,} deep + {ftok:,} fast tok")
+    print(f"  time {mins}  ({calls} deep calls{per} - wall-clock is bound by sequential claude -p)")
     out = Path(__file__).resolve().parents[2] / "bench-results"
     out.mkdir(exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
