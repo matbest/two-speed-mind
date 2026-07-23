@@ -256,9 +256,16 @@ class _CountingJudge:
         return self.inner.conflicts(a, b)
 
 
-def run_slice(session, sl: Slice, say=lambda s: None, wait_idle=None) -> tuple[list[dict], dict]:
+def run_slice(
+    session, sl: Slice, say=lambda s: None, wait_idle=None, groom_passes: int = 3
+) -> tuple[list[dict], dict]:
     """Feed sessions, settle, probe. Returns (rows, population_stats). UI-free: `say` narrates,
-    `wait_idle` drains a background worker (the CLI passes its progress-printing drain)."""
+    `wait_idle` drains a background worker (the CLI passes its progress-printing drain).
+
+    Ingest is cheap now (append-only, spec §49) — the judge doesn't run at insert. Before each
+    probe the mind is groomed for a BOUNDED `groom_passes` (not to completion): each pass is one
+    O(n) bubble (rank) + one budgeted cross-page cleanup, so the wiki is 'groomed so far'. More
+    passes = a cleaner wiki = better answers, at more judge calls; the knob trades the two."""
     by_pos: dict[int, list[Probe]] = {}
     for p in sl.probes:
         by_pos.setdefault(min(p.after_session, len(sl.sessions) - 1), []).append(p)
@@ -288,12 +295,11 @@ def run_slice(session, sl: Slice, say=lambda s: None, wait_idle=None) -> tuple[l
             f"({session.deep_meter.total - d0:,} deep tok, {len(session.store.pages())} page(s))")
         if i not in by_pos:
             continue
-        # let settled winners earn their pages (rank-only — cheap), then ONE cleanup pass to
-        # settle cross-page work. Doing full cleanup on every one of these fired 3x the judge
-        # calls on a big mind for no benefit (the pairs are unchanged between them).
-        for _ in range(session.compiler.promote_after):
-            session.compiler.housekeep(cleanup=False)
-        session.compiler.housekeep(cleanup=True)
+        # a BOUNDED groom before probing (spec §49): each pass is a bubble (rank) + budgeted
+        # cross-page cleanup. NOT to completion — the fast brain reads the wiki as groomed so far.
+        say(f"{pct()} grooming {groom_passes} pass(es) before probing...")
+        for _ in range(groom_passes):
+            session.compiler.housekeep(cleanup=True)
         for probe in by_pos[i]:
             say(f"{pct()} probe: {probe.question[:60]}")
             d0, f0 = session.deep_meter.total, session.fast_meter.total

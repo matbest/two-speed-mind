@@ -893,8 +893,13 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         beater = threading.Thread(target=_beat, daemon=True)
         beater.start()
     try:
+        # pre-probe groom budget (spec §49): how many bounded groom passes before each probe.
+        # override on the command line, e.g. `/bench 4  groom=1` for the fastest, messiest run.
+        groom = next((int(a.split("=")[1]) for a in args if a.startswith("groom=")
+                      and a.split("=")[1].isdigit()), 3)
         rows, stats = personamem.run_slice(
-            session, sl, say=_say, wait_idle=drain if session.background else None
+            session, sl, say=_say, wait_idle=drain if session.background else None,
+            groom_passes=groom,
         )
     except KeyboardInterrupt:
         print("\n  (bench cancelled - scoring what ran)")
