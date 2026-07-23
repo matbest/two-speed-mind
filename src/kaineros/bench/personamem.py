@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re as _re
 import time
 import tomllib
 from dataclasses import dataclass, field
@@ -78,37 +79,63 @@ def load_sample(path: Path = SAMPLE) -> Slice:
     return Slice(name=data.get("name", "personamem-sample"), sessions=sessions, probes=probes)
 
 
+def _strip_letter(s: str) -> str:
+    """'(a) It's great to see…' -> 'It's great to see…'."""
+    return _re.sub(r"^\s*\(?[a-hA-H]\)?[\.\):]?\s*", "", str(s)).strip()
+
+
 def _parse_options(raw: str) -> list[str]:
-    """all_options arrives as a stringified list; be tolerant about the exact dialect."""
+    """all_options is a stringified list, each item lettered ('(a) text'). Return clean texts."""
+    val = None
     for parse in (json.loads, __import__("ast").literal_eval):
         try:
-            val = parse(raw)
-            if isinstance(val, list) and val:
-                return [str(v) for v in val]
+            got = parse(raw)
+            if isinstance(got, list) and got:
+                val = got
+                break
         except (ValueError, SyntaxError):
             continue
-    parts = [p.strip() for p in raw.replace("\r", "").split("\n") if p.strip()]
-    if len(parts) > 1:
-        return parts
-    raise RuntimeError(f"couldn't parse all_options: {raw[:120]!r}")
+    if val is None:
+        val = [p for p in raw.replace("\r", "").split("\n") if p.strip()]
+    opts = [_strip_letter(v) for v in val]
+    if not opts:
+        raise RuntimeError(f"couldn't parse all_options: {raw[:120]!r}")
+    return opts
 
 
-def _sessions_from_context(obj) -> list[list[str]]:
-    """Pull the user's turns out of one shared-context record, tolerantly."""
-    msgs = obj.get("messages") if isinstance(obj, dict) else obj
-    if not isinstance(msgs, list):
-        raise RuntimeError(f"unrecognised context record shape: {type(obj).__name__}")
-    turns = [
-        str(m.get("content", ""))
-        for m in msgs
-        if isinstance(m, dict) and m.get("role") == "user" and m.get("content")
-    ]
-    if not turns:
-        raise RuntimeError("context record held no user messages - schema drift, adjust adapter")
-    # no explicit session markers in the flat record: chunk into pseudo-sessions so the compiler
-    # gets its natural "gone quiet" boundaries rather than one giant block
-    size = 10
-    return [turns[i : i + size] for i in range(0, len(turns), size)]
+def _answer_text(correct: str, options: list[str]) -> str:
+    """correct_answer is a letter, usually '(c)'. Map it to the option text."""
+    m = _re.match(r"\s*\(?([a-hA-H])\)?", correct or "")
+    if m:
+        i = LETTERS.index(m.group(1).lower())
+        if i < len(options):
+            return options[i]
+    stripped = _strip_letter(correct)
+    if stripped in options:  # some dialects store the text
+        return stripped
+    raise RuntimeError(f"can't resolve correct_answer {correct!r} against {len(options)} options")
+
+
+def _user_turns(messages: list, end_index: int | None) -> list[str]:
+    """The user's turns from a context's message list (up to end_index if given), 'User: ' stripped."""
+    msgs = messages[: end_index + 1] if end_index is not None else messages
+    turns = []
+    for m in msgs:
+        if isinstance(m, dict) and m.get("role") == "user" and m.get("content"):
+            turns.append(_re.sub(r"^\s*User:\s*", "", str(m["content"])).strip())
+    return [t for t in turns if t]
+
+
+def _load_context(ctx_path: Path, ctx_id: str) -> list | None:
+    """Scan the JSONL (one `{context_id: [messages]}` per line) for the target context's messages."""
+    with open(ctx_path, encoding="utf-8") as f:
+        for line in f:
+            if ctx_id not in line:  # cheap prefilter before the JSON parse
+                continue
+            rec = json.loads(line)
+            if isinstance(rec, dict) and ctx_id in rec:
+                return rec[ctx_id]
+    return None
 
 
 def load_dataset_slice(
@@ -132,47 +159,46 @@ def load_dataset_slice(
         rows = list(csv.DictReader(f))
     if not rows:
         raise RuntimeError(f"{qcsv} parsed empty")
-    pid = persona if persona is not None else rows[0].get("persona_id")
-    mine = [r for r in rows if r.get("persona_id") == pid][:limit]
+    pid = str(persona) if persona is not None else str(rows[0].get("persona_id"))
+    mine = [r for r in rows if str(r.get("persona_id")) == pid]
     if not mine:
         raise RuntimeError(f"no questions for persona_id={pid!r}")
+    # a persona may span several shared contexts — take the one with the most questions
+    from collections import Counter
 
-    contexts = [json.loads(line) for line in open(ctx, encoding="utf-8") if line.strip()]
-    record = None
-    for c in contexts:
-        if isinstance(c, dict) and str(c.get("persona_id", "")) == str(pid):
-            record = c
-            break
-    if record is None and contexts:
-        record = contexts[0]  # single-record files / schema drift: take what there is
-    sessions = _sessions_from_context(record)
+    ctx_id = Counter(r["shared_context_id"] for r in mine).most_common(1)[0][0]
+    mine = [r for r in mine if r["shared_context_id"] == ctx_id][:limit]
+
+    messages = _load_context(ctx, ctx_id)
+    if messages is None:
+        raise RuntimeError(f"context {ctx_id[:12]}... not found in {ctx.name}")
+
+    def _end(r) -> int:
+        try:
+            return int(r.get("end_index_in_shared_context"))
+        except (TypeError, ValueError):
+            return len(messages) - 1
+
+    # compile the context up to the furthest question's in-situ position; smoke caps by sessions
+    turns = _user_turns(messages, max(_end(r) for r in mine))
+    sessions = [turns[i : i + 10] for i in range(0, len(turns), 10)]
     if max_sessions is not None:
-        sessions = sessions[:max_sessions]  # smoke run: compile only the first few sessions
+        sessions = sessions[:max_sessions]
 
     probes = []
     for i, r in enumerate(mine):
         options = _parse_options(r["all_options"])
-        answer = r["correct_answer"].strip()
-        if answer not in options:  # some dialects store the letter, not the text
-            low = answer.lower().strip("().")
-            if low in LETTERS[: len(options)]:
-                answer = options[LETTERS.index(low)]
-            else:
-                raise RuntimeError(f"correct_answer {answer!r} not among options for q{i}")
         probes.append(
             Probe(
-                qid=r.get("question_id", f"q{i}"),
+                qid=str(r.get("question_id", f"q{i}")),
                 qtype=r.get("question_type", "unknown"),
-                question=r["user_question"],
+                question=r["user_question_or_message"],
                 options=options,
-                answer=answer,
+                answer=_answer_text(r["correct_answer"], options),
                 after_session=len(sessions) - 1,
             )
         )
-    return Slice(name=f"personamem-{size}-{pid}", sessions=sessions, probes=probes)
-
-
-import re as _re
+    return Slice(name=f"personamem-{size}-p{pid}", sessions=sessions, probes=probes)
 
 
 def score_answer(answer: str, probe: Probe) -> bool:

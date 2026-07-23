@@ -79,25 +79,28 @@ def test_run_slice_on_fakes():
 
 
 def test_dataset_loader_and_smoke_cap(tmp_path):
-    """The real-data loader parsed against a minimal fake dataset (no network), incl. the
-    max_sessions cap the smoke run uses."""
-    import csv
+    """The real-data loader against a minimal fake dataset mirroring PersonaMem's actual schema
+    (lettered options, letter answers, context keyed by shared_context_id, 'User:' prefixes),
+    incl. the max_sessions cap the smoke run uses."""
     import json
 
     (tmp_path / "questions_32k.csv").write_text(
-        "persona_id,question_id,question_type,user_question,correct_answer,all_options\n"
-        'p1,q1,recall,"What pet?",dog,"[""dog"", ""cat""]"\n'
-        'p1,q2,recall,"What city?",london,"[""london"", ""paris""]"\n',
+        "persona_id,question_id,question_type,user_question_or_message,correct_answer,"
+        "all_options,shared_context_id,end_index_in_shared_context\n"
+        '0,q1,recall,"What pet?",(b),"[""(a) a cat"", ""(b) a dog""]",CTX,999\n'
+        '0,q2,recall,"What city?",(a),"[""(a) london"", ""(b) paris""]",CTX,999\n',
         encoding="utf-8",
     )
-    msgs = [{"role": "user", "content": f"turn {i}"} for i in range(35)]  # -> 4 pseudo-sessions
+    msgs = [{"role": "system", "content": "persona"}]
+    msgs += [{"role": "user", "content": f"User: turn {i}"} for i in range(35)]  # 4 sessions
     (tmp_path / "shared_contexts_32k.jsonl").write_text(
-        json.dumps({"persona_id": "p1", "messages": msgs}) + "\n", encoding="utf-8"
+        json.dumps({"CTX": msgs}) + "\n", encoding="utf-8"
     )
 
     full = personamem.load_dataset_slice(data_dir=tmp_path)
     assert len(full.sessions) == 4 and len(full.probes) == 2
-    assert full.probes[0].answer == "dog"
+    assert full.probes[0].answer == "a dog"          # (b) -> the 2nd option, letter stripped
+    assert full.sessions[0][0] == "turn 0"           # 'User:' prefix stripped
 
     smoke = personamem.load_dataset_slice(data_dir=tmp_path, limit=1, max_sessions=2)
     assert len(smoke.sessions) == 2 and len(smoke.probes) == 1  # capped context + question count
