@@ -44,15 +44,21 @@ def _notify() -> None:
 # models live. Thread-safe (same lock as the file write); the worker appends, the main thread
 # reads and paints — the panel is NEVER painted off the main thread (that corrupts the terminal).
 _recent: deque[dict] = deque(maxlen=8)
+_deep_calls = 0  # running count of completed DEEP calls this run — for a "still compiling" tick
 
 
 def enable(directory: str | Path) -> Path:
     """Start a fresh log file under `directory`; returns its path."""
-    global _path
+    global _path, _deep_calls
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     _path = directory / f"calls-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
+    _deep_calls = 0
     return _path
+
+
+def deep_calls() -> int:
+    return _deep_calls
 
 
 def path() -> Path | None:
@@ -95,11 +101,14 @@ def begin(brain: str, backend: str, model: str, purpose: str, system: str, input
 
 def finish(entry: dict, output: str, tokens: int | None = None) -> None:
     """Fill in the reply on an entry from `begin`; write the completed record to the log file."""
+    global _deep_calls
     with _lock:
         entry["output"] = output
         entry["tokens"] = tokens
         entry["elapsed"] = round(time.time() - entry["at"], 1)  # reply latency (round-trip)
         entry["pending"] = False
+        if entry.get("brain") == "deep":
+            _deep_calls += 1
         if _path is not None:
             rec = {k: v for k, v in entry.items() if k != "pending"}
             with open(_path, "a", encoding="utf-8") as f:

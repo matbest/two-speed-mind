@@ -30,7 +30,7 @@ def _norm(text: str) -> str:
 class Compiler:
     def __init__(
         self, store: Store, judge: Judge, promote_after: int = 3, split_after: int = 8,
-        groom_rate: int = 8, seed: int | None = None
+        groom_rate: int = 8, seed: int | None = None, max_cleanup_calls: int = 40
     ) -> None:
         self.store = store
         self.judge = judge
@@ -50,6 +50,13 @@ class Compiler:
         # cadence unchecked (a real bug: an update keyed to a fresh gene never contested the
         # incumbent because fusion never compared them). Cleared after each cleanup consumes it.
         self._dirty_genes: set[str] = set()
+        # a real persona (~100 pages) can make the eager frontier fire hundreds of first-time
+        # judge calls in ONE cleanup — each a ~4s subprocess. Cap NEW judge calls per cleanup;
+        # overflow defers to the next cleanup (the dirty set is kept, and the verdict cache makes
+        # the pairs already checked free), so cost stays bounded per pass. Fusion runs before
+        # curation, so answer-critical merges get the budget first; conflict-questions get the rest.
+        self.max_cleanup_calls = max_cleanup_calls
+        self._call_budget: int | None = None  # set only during a cleanup pass
         self.last_report = CompileReport()  # the deep brain's receipt (spec §19)
         self._inserted_since_pass = 0
         # verdict cache (T18): a verdict about an unchanged pair never expires. Housekeeping
@@ -64,14 +71,22 @@ class Compiler:
 
     def _verdict(self, kind: str, gene: str, a: Candidate, b: Candidate) -> bool:
         key = (kind, gene, a.content, b.content)
-        if key not in self._verdicts:
-            shortcut = self._shortcut(kind, a, b)
-            if shortcut is not None:
-                self._verdicts[key] = shortcut
-            elif kind == "conflicts":
-                self._verdicts[key] = self.judge.conflicts(a, b)
-            else:
-                self._verdicts[key] = getattr(self.judge, kind)(gene, a, b)
+        if key in self._verdicts:
+            return self._verdicts[key]  # cache hit is always free (no budget cost)
+        shortcut = self._shortcut(kind, a, b)
+        if shortcut is not None:
+            self._verdicts[key] = shortcut  # deterministic, free
+            return shortcut
+        if self._call_budget is not None:
+            if self._call_budget <= 0:
+                # cleanup's new-call budget is spent this pass — answer conservatively (don't
+                # fuse, don't flag) WITHOUT caching, so this pair is re-tried at the next cleanup
+                return False
+            self._call_budget -= 1
+        if kind == "conflicts":
+            self._verdicts[key] = self.judge.conflicts(a, b)
+        else:
+            self._verdicts[key] = getattr(self.judge, kind)(gene, a, b)
         return self._verdicts[key]
 
     @staticmethod
@@ -185,13 +200,17 @@ class Compiler:
 
         self._dirty_genes.update(p.gene for p in promoted)  # accrue across passes, cleanup or not
         if cleanup:
-            # cross-page work over a BOUNDED pair set (spec §47): every page changed SINCE THE LAST
-            # CLEANUP (eager — so nothing slips through the cleanup cadence) + random pairs (grooms
-            # the long tail). Fusion first (it may retire a page), then conflict curation.
+            # cross-page work over a BOUNDED pair set (spec §47), under a NEW-call budget so a big
+            # mind can't fire hundreds of subprocess calls at once. Fusion first (answer-critical
+            # merges get the budget), then conflict curation. Overflow keeps the dirty set for the
+            # next cleanup, where the already-checked pairs are free (cache) and only new ones cost.
+            self._call_budget = self.max_cleanup_calls
             pairs = self._pairs_to_check([g for g in self._dirty_genes if g in self.store.clean])
             fused = self._fusion(pairs)
             queued = self._curate(pairs)
-            self._dirty_genes.clear()  # consumed — next window starts fresh
+            if self._call_budget > 0:  # got through the whole set within budget → window done
+                self._dirty_genes.clear()
+            self._call_budget = None
         self.last_report = CompileReport(
             inserted=self._inserted_since_pass,
             merged=merged,

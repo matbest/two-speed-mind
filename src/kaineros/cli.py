@@ -861,12 +861,16 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         print(f"  {s}")
 
     def _beat() -> None:
+        from . import calllog
+
         start = time.time()
-        while not beat_stop.wait(5.0):
-            if time.time() - last_out[0] >= 15:
+        while not beat_stop.wait(3.0):
+            # a single session's compile can fire MANY judge calls with no % movement — tick the
+            # running deep-call count so a busy cleanup pass never reads as hung
+            if time.time() - last_out[0] >= 8:
                 last_out[0] = time.time()
-                print(f"     ...still working ({time.time() - start:.0f}s elapsed, "
-                      f"{session.deep_meter.total - d0:,} deep tok spent)")
+                print(f"     ...still compiling ({time.time() - start:.0f}s, "
+                      f"{calllog.deep_calls()} deep calls, {session.deep_meter.total - d0:,} tok)")
 
     # watch the calls live: bench compiles synchronously on THIS (main) thread, so the call log's
     # observer fires here and can safely repaint the debug panel between each request/reply. When

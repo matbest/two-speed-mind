@@ -92,6 +92,22 @@ def test_change_off_the_cleanup_cadence_is_still_checked():
     assert comp.last_report.fused == 1    # ...and fuses with green curry (one claim, two genes)
 
 
+def test_cleanup_call_budget_caps_new_calls_per_pass():
+    """A big same-topic mind can't fire hundreds of judge calls in one cleanup — the per-pass
+    new-call budget caps it, and overflow defers (dirty set kept) to the next cleanup."""
+    judge = TallyJudge()
+    comp = Compiler(Store(), judge, promote_after=1, groom_rate=0, seed=1, max_cleanup_calls=5)
+    for i in range(12):  # 12 same-tag pages -> many eager pairs, overlapping content (no shortcut)
+        comp.insert(_cand(f"g{i}", f"shared topic detail number {i} here", ("shared",)))
+    judge.calls = 0
+    comp.housekeep(cleanup=True)
+    assert judge.calls <= 5                  # new model calls bounded by the budget
+    assert comp._dirty_genes                 # overflow deferred, not lost
+    judge.calls = 0
+    comp.housekeep(cleanup=True)             # next cleanup: done pairs are cache-free, budget on new
+    assert judge.calls <= 5                  # ...still bounded, and it makes progress
+
+
 def test_disjoint_topics_are_never_sampled_into_a_call():
     # grooming is tag-biased, but even a random cross-topic pair is skipped by tag scoping
     judge = TallyJudge()

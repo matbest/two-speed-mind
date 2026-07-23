@@ -335,6 +335,9 @@ This prototype proves the *architecture* — with the model faked — as a comma
     - **Stochastic grooming:** a constant `groom_rate` of random pairs per pass, biased toward
       shared tags — slowly grooming the long tail (minds loaded from disk, pairs made comparable by
       a later fission). It never asks "is everything checked?"; time does the work, evolutionarily.
+    A per-cleanup **new-call budget** caps how many first-time judge calls one cleanup may make
+    (each is a ~4s subprocess on the sub) — fusion runs first so answer-critical merges get the
+    budget, and overflow defers to the next cleanup where the already-checked pairs are free.
     The verdict cache (§43 in spirit) makes a re-sampled unchanged pair free, so steady-state cost
     tracks the *churn* rate, not the *size* of the mind. The one guarantee that matters — catch a
     brand-new contradiction now — is the eager frontier's job; everything else converges over time.
