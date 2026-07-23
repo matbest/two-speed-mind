@@ -325,10 +325,13 @@ This prototype proves the *architecture* — with the model faked — as a comma
 **Grooming, not sweeping (§47) — the deep brain grooms at a constant rate**
 47. The cross-page work (fusion + conflict detection) is **not** an all-pairs O(pages²) sweep each
     cleanup. It examines a **bounded** set of page pairs, from two sources:
-    - **Eager frontier:** the pages that CHANGED this pass (newly promoted or re-promoted) against
-      their plausible peers (same-tag, or either side untagged — §45's conservative rule). Because
-      the *second* page of any conflicting pair is a change, a fresh contradiction is caught the
-      moment it forms — no waiting. O(changed·peers), not O(pages²).
+    - **Eager frontier:** every page changed (promoted/re-promoted) SINCE THE LAST CLEANUP —
+      accumulated in a dirty set across passes, so a change never slips through the cleanup cadence
+      — against its plausible peers (same-tag, or either side untagged — §45's conservative rule).
+      Because the *second* page of any conflicting pair is a change, a fresh contradiction is caught
+      at the next cleanup — including an update keyed to a FRESH gene ("usual_order" vs
+      "dish.usual_order") that must be fused with the incumbent to contest it. O(dirty·peers), not
+      O(pages²).
     - **Stochastic grooming:** a constant `groom_rate` of random pairs per pass, biased toward
       shared tags — slowly grooming the long tail (minds loaded from disk, pairs made comparable by
       a later fission). It never asks "is everything checked?"; time does the work, evolutionarily.
