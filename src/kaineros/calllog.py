@@ -16,10 +16,15 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 _path: Path | None = None
 _lock = threading.Lock()
+# a small in-memory tail of the most recent calls, so the cockpit can show what we're asking the
+# models live. Thread-safe (same lock as the file write); the worker appends, the main thread
+# reads and paints — the panel is NEVER painted off the main thread (that corrupts the terminal).
+_recent: deque[dict] = deque(maxlen=8)
 
 
 def enable(directory: str | Path) -> Path:
@@ -45,8 +50,6 @@ def log(
     output: str,
     tokens: int | None = None,
 ) -> None:
-    if _path is None:
-        return
     entry = {
         "at": time.time(),
         "brain": brain,
@@ -58,7 +61,14 @@ def log(
         "output": output,
         "tokens": tokens,
     }
-    line = json.dumps(entry, ensure_ascii=False)
     with _lock:
-        with open(_path, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        _recent.append(entry)  # always feeds the live panel, even if file logging is off
+        if _path is not None:
+            with open(_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def recent() -> list[dict]:
+    """A snapshot of the last few calls, newest last — for the live cockpit panel."""
+    with _lock:
+        return list(_recent)

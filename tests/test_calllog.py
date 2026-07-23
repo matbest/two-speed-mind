@@ -34,6 +34,31 @@ def test_openrouter_chat_is_transcribed(monkeypatch, tmp_path):
     monkeypatch.setattr(calllog, "_path", None)  # leave the module as we found it
 
 
+def test_recent_feeds_the_live_panel_even_with_file_off(monkeypatch):
+    from kaineros.view import calls_panel
+
+    monkeypatch.setattr(calllog, "_path", None)
+    calllog._recent.clear()
+    assert "no model calls yet" in calls_panel(calllog.recent())  # empty state
+    calllog.log("deep", "claude-cli", "sonnet", "judge.conflicts",
+                "sys", "Do A and B contradict?", '{"conflicts": false}', tokens=412)
+    panel = calls_panel(calllog.recent())
+    assert "deep · judge.conflicts" in panel      # the header: which brain, why
+    assert "Do A and B contradict?" in panel      # the actual text we asked
+    assert "412 tok" in panel
+    calllog._recent.clear()
+
+
+def test_recent_keeps_only_the_tail(monkeypatch):
+    monkeypatch.setattr(calllog, "_path", None)
+    calllog._recent.clear()
+    for i in range(20):
+        calllog.log("deep", "b", "m", "extract", "s", f"turn {i}", "out")
+    rec = calllog.recent()
+    assert len(rec) == 8 and rec[-1]["input"] == "turn 19"  # bounded ring, newest last
+    calllog._recent.clear()
+
+
 def test_entries_append_in_order(monkeypatch, tmp_path):
     monkeypatch.setattr(calllog, "_path", None)
     log_file = calllog.enable(tmp_path)

@@ -290,6 +290,22 @@ Verify on the real backend: `/metrics conflict-hard dynamic` (dynamic-implicit s
 `/bench 2`'s conflicts count. Note: pre-tags pages on disk have no tags and always fall through
 — the deep brain re-tagging old pages during cleanup is future work.
 
+**T21. Sweep scoping — kill the quadratic (the standing cost frontier).** The two cross-page
+sweeps (`_fusion`/`_find_duplicate_pages` and `_curate`) are O(pages²) *iterations* per cleanup
+pass. Verdict cache (T18) mutes repeats and tag scoping (T20) skips disjoint-topic pairs, but a
+pass that promotes K new pages still checks each against all N existing ones in one burst. Fix:
+scope each sweep to a **new/changed-since-last-pass frontier** — O(K·N) per pass, not O(N²).
+Contained change (both sweeps take the frontier), testable on the fakes with the counting judge;
+`/bench 2`'s judge-call count is the before/after proof.
+
+**T22. Wiki in Open Knowledge Format (deferred, low-risk).** Render the kainome in Google's OKF
+(cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing)
+— a portable/interoperable knowledge representation — instead of (or alongside) the bespoke
+Markdown. **Safe to defer:** the wiki is *derived, write-only output* (spec §46) — every
+comparison runs on the JSON layers (pool + pages), never on the rendered wiki — so the format is
+a pure `persist._render_wiki` change with zero effect on the engine or its cost. Pick the target
+representation, then it's a rendering task.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

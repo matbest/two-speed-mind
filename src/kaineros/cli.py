@@ -290,16 +290,26 @@ def _timed(fn, show: bool):
 
 PANEL_HEIGHT = 9              # the two brain boxes
 BAR_HEIGHT = 1               # the posture strip above them
-HEADER_HEIGHT = BAR_HEIGHT + PANEL_HEIGHT  # rows the pinned header occupies
+CALLS_HEIGHT = 7             # the live model-call panel (5 content rows + border) — cloud only
+
+
+def _header_height(session: Session) -> int:
+    """Rows the pinned header occupies. The live-call panel only appears for cloud backends
+    (the fakes ask nothing), so offline sessions keep the taller conversation area."""
+    h = BAR_HEIGHT + PANEL_HEIGHT
+    if session.cloud:
+        h += CALLS_HEIGHT
+    return h
 
 
 def _print_cockpit(console, session: Session) -> None:
-    """The pinned header: posture bar on top, then deep brain LEFT / fast brain RIGHT."""
+    """The pinned header: posture bar, deep brain LEFT / fast brain RIGHT, then (cloud) the
+    live text we're sending the models."""
     from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
 
-    from .view import deep_panel, fast_panel, status_bar
+    from .view import calls_panel, deep_panel, fast_panel, status_bar
 
     if session.running_note:  # a metric is running — the header says so (spec: visible tests)
         bar = "> RUNNING METRIC - " + session.running_note
@@ -325,6 +335,16 @@ def _print_cockpit(console, session: Session) -> None:
         Panel(fast, title="fast brain - this turn", height=PANEL_HEIGHT),
     )
     console.print(grid)
+    if session.cloud:  # the live wire: what we're actually asking the models, right now
+        from . import calllog
+
+        console.print(
+            Panel(
+                calls_panel(calllog.recent()),
+                title="asking the models - live",
+                height=CALLS_HEIGHT,
+            )
+        )
 
 
 def _enable_vt() -> bool:
@@ -369,7 +389,7 @@ def _enter_cockpit_screen(console, session: Session) -> None:
 
     rows = console.size.height
     sys.stdout.write("\x1b[2J")                        # clear screen
-    sys.stdout.write(f"\x1b[{HEADER_HEIGHT + 1};{rows}r")  # scrolling only below the header
+    sys.stdout.write(f"\x1b[{_header_height(session) + 1};{rows}r")  # scrolling below the header
     sys.stdout.write(f"\x1b[{rows};1H")                # cursor to the bottom line
     sys.stdout.flush()
     # belt-and-braces: a constrained scroll region left behind (crash, window close, kill) makes
