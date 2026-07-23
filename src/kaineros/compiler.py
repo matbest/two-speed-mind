@@ -172,6 +172,7 @@ class Compiler:
                     provenance=top.provenance,
                     rank_history=history + [{"at": time.time(), "event": "promoted"}],
                     tags=top.tags,  # the winning allele's vocabulary serves the page (spec §44)
+                    gist=top.gist,  # ...and its bare answer (spec §48)
                 )
                 self.store.clean[gene] = new_page
                 promoted.append(new_page)

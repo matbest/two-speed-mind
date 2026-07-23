@@ -131,8 +131,16 @@ PHRASE_SYSTEM = (
 )
 
 
+def _note(p: Page) -> str:
+    # lead with the bare answer (spec §48) so the fast brain reads the value, not a sentence it
+    # can misparse; keep the sentence in parens for nuance
+    if p.gist:
+        return f"- {p.gene} = {p.gist}  ({p.content})"
+    return f"- [{p.gene}] {p.content}"
+
+
 def phrase_user(question: str, pages: list[Page], buffer: list[Turn]) -> str:
-    notes = "\n".join(f"- [{p.gene}] {p.content}" for p in pages)
+    notes = "\n".join(_note(p) for p in pages)
     recent = "\n".join(f"{t.speaker}: {t.text}" for t in buffer[-6:])
     return (
         f"Retrieved notes:\n{notes or '- (none)'}\n\n"
@@ -174,6 +182,7 @@ def candidates_from_items(items: list[dict], users: list[Turn]) -> list[Candidat
             Candidate(
                 gene=item["gene"],
                 content=item["content"],
+                gist=item.get("gist", "").strip(),
                 tags=tuple(
                     dict.fromkeys(t.strip().lower() for t in item.get("tags", []) if t.strip())
                 ),
@@ -243,13 +252,14 @@ EXTRACT_SCHEMA = {
                 "properties": {
                     "gene": {"type": "string"},
                     "content": {"type": "string"},
+                    "gist": {"type": "string"},
                     "tags": {"type": "array", "items": {"type": "string"}},
                     "stated": {"type": "boolean"},
                     "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
                     "stakes": {"type": "string", "enum": ["low", "high"]},
                     "source_turn": {"type": "integer"},
                 },
-                "required": ["gene", "content", "tags", "stated", "confidence", "stakes", "source_turn"],
+                "required": ["gene", "content", "gist", "tags", "stated", "confidence", "stakes", "source_turn"],
                 "additionalProperties": False,
             },
         }
@@ -273,6 +283,11 @@ Different claims about one topic get different keys (user.food.loves vs user.foo
 - The key names the QUESTION, never the answer: user.home_city, not user.home.berlin; \
 user.residence.part_time, not user.residence.milton_keynes. The answer changes; the key must not.
 - `content` is one self-contained sentence, understandable years later without the conversation.
+- `gist`: the BARE ANSWER the gene's question resolves to, in as few words as possible — no \
+sentence, no punctuation, lowercase (user.food.favorite_cuisine -> "japanese"; user.home_city -> \
+"st leonards"; user.pet.species -> "greyhound"). The gene is the question; the gist is the value. \
+A fast reader keys on this, so it must be unambiguous and must NOT restate the alternative it \
+replaced ("japanese", never "japanese over thai").
 - `tags`: 3-6 lowercase words someone would use when ASKING about this fact — the question's \
 vocabulary, not the answer's ("Just picked up a new Tesla" -> ["car", "vehicle", "drive", "ev"]).
 - `stated`: true if the user said it outright; false if you inferred it.

@@ -338,4 +338,16 @@ This prototype proves the *architecture* — with the model faked — as a comma
     (Untagged minds fall back to the conservative "check every peer" path; real minds are tagged at
     extraction, so the frontier stays small.)
 
+**The gist: gene = answer (§48)**
+48. Every fact also carries a **gist** — the bare value its gene resolves to, in as few words as
+    possible (`user.food.favorite_cuisine` → `japanese`, `user.pet.species` → `greyhound`). The
+    gene is the *question*; the gist is the *value* — together a subject-predicate-object triple,
+    the structured form the fast brain reads without parsing (or misparsing) a sentence. Minted at
+    extraction beside `content`, it travels with the winning allele onto the page, and the fast
+    brain's notes lead with it (`user.food.favorite_cuisine = japanese  (the user now prefers
+    Japanese…)`). **Both, not either:** the sentence stays for nuance and human reading; the gist
+    is the terse handle. A weak fast model that would agonise over "prefers Japanese over Thai"
+    answers cleanly from `= japanese`. (This is also the natural bridge to a knowledge-graph /
+    OKF rendering of the kainome — the triples are already there.)
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

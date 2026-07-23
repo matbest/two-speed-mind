@@ -53,6 +53,9 @@ class Candidate:
     wins: int = 0                       # consecutive housekeeping passes held at #1 (promotion threshold)
     tags: tuple[str, ...] = ()          # the fact's own vocabulary (spec §44) — the words someone
                                         # would use when ASKING about it; hints, never verdicts
+    gist: str = ""                      # the bare ANSWER the gene resolves to (spec §48): gene =
+                                        # the question, gist = the value ("japanese") — a terse
+                                        # form the fast brain reads without parsing a sentence
 
 
 @dataclass
@@ -63,6 +66,7 @@ class Page:
     provenance: Provenance
     rank_history: list = field(default_factory=list)  # timestamped rank estimates (auditability)
     tags: tuple[str, ...] = ()          # inherited from the winning allele (spec §44)
+    gist: str = ""                      # the bare answer, inherited from the winner (spec §48)
 
 
 @dataclass

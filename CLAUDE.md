@@ -61,5 +61,7 @@ gene = a concept/topic key · candidate (allele) = a competing version of a fact
 candidates for a gene · selection = pairwise ranking + promotion · page = a promoted clean entry ·
 kainome = the clean layer the fast model reads (the evolving knowledge genome) · tags = the fact's
 own vocabulary (the words a QUESTION would use), minted at extraction, routing retrieval and
-scoping the conflicts sweep — hints, never verdicts (spec §44-45).
+scoping the conflicts sweep — hints, never verdicts (spec §44-45) · gist = the bare answer the
+gene resolves to (gene=question, gist=value → a triple the fast brain reads without parsing a
+sentence; spec §48).
 Provenance/confidence/stakes travel on every fact.
