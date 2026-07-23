@@ -112,8 +112,11 @@ def _sessions_from_context(obj) -> list[list[str]]:
 
 
 def load_dataset_slice(
-    size: str = "32k", persona: str | None = None, limit: int = 10, data_dir: Path = DATA_DIR
+    size: str = "32k", persona: str | None = None, limit: int = 10,
+    max_sessions: int | None = None, data_dir: Path = DATA_DIR
 ) -> Slice:
+    """A slice of the real PersonaMem dataset. `max_sessions` caps the compiled context (for a
+    quick smoke run that shakes out the loader before a full 10-20 min persona)."""
     qcsv = data_dir / f"questions_{size}.csv"
     ctx = data_dir / f"shared_contexts_{size}.jsonl"
     if not qcsv.exists() or not ctx.exists():
@@ -143,6 +146,8 @@ def load_dataset_slice(
     if record is None and contexts:
         record = contexts[0]  # single-record files / schema drift: take what there is
     sessions = _sessions_from_context(record)
+    if max_sessions is not None:
+        sessions = sessions[:max_sessions]  # smoke run: compile only the first few sessions
 
     probes = []
     for i, r in enumerate(mine):

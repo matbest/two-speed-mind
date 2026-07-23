@@ -37,7 +37,7 @@ HELP = (
     "  /profile   list profiles, or /profile <name> to switch (each has its own wiki)\n"
     "  /persona   /persona <name> builds a fresh wiki from a scripted person (watch it grow)\n"
     "  /metrics   run a benchmark live and score it - pick a family (conflict / retrieval)\n"
-    "  /bench     external benchmarks (PersonaMem): pick sample / sample-big / dataset slice\n"
+    "  /bench     external benchmarks (PersonaMem): sample / sample-big / slice-smoke / slice\n"
     "  /prompt    print the static system prompts + schemas we send (extract / judge / phrase)\n"
     "  /clear     wipe the screen and refresh the panels (keeps the mind)\n"
     "  /debug     set the live model-call panel depth (off / 5 / 10 / 15 / 20 lines)\n"
@@ -783,7 +783,8 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     benches = {
         "sample": "tiny built-in fixture (5 turns, 4 probes) - a smoke test, cheap",
         "sample-big": "bigger built-in fixture (8 sessions, ~20 turns, 10 probes) - a real workout",
-        "slice": "a slice of the real PersonaMem dataset (needs the data downloaded; expensive)",
+        "slice-smoke": "real PersonaMem, TINY slice (3 sessions, 2 questions) - de-risks the loader",
+        "slice": "real PersonaMem, full 32k persona (~10-20 min, free on the sub) - the real thing",
     }
     names = list(benches)
     if args:
@@ -804,7 +805,10 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
             sl = personamem.load_sample()
         elif which == "sample-big":
             sl = personamem.load_sample(personamem.SAMPLE_BIG)
-        else:
+        elif which == "slice-smoke":
+            # fixed tiny params, no prompts — just prove the real-data loader works end to end
+            sl = personamem.load_dataset_slice(limit=2, max_sessions=3)
+        else:  # slice — the full persona
             persona = args[1] if len(args) > 1 else (input("  persona id (blank = first)> ").strip() or None)
             raw = args[2] if len(args) > 2 else input("  how many questions? [10]> ").strip()
             limit = int(raw) if raw.isdigit() else 10

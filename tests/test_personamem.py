@@ -78,6 +78,38 @@ def test_run_slice_on_fakes():
         assert {"qid", "type", "expected", "answer", "deep_tok", "fast_tok", "seconds"} <= set(r)
 
 
+def test_dataset_loader_and_smoke_cap(tmp_path):
+    """The real-data loader parsed against a minimal fake dataset (no network), incl. the
+    max_sessions cap the smoke run uses."""
+    import csv
+    import json
+
+    (tmp_path / "questions_32k.csv").write_text(
+        "persona_id,question_id,question_type,user_question,correct_answer,all_options\n"
+        'p1,q1,recall,"What pet?",dog,"[""dog"", ""cat""]"\n'
+        'p1,q2,recall,"What city?",london,"[""london"", ""paris""]"\n',
+        encoding="utf-8",
+    )
+    msgs = [{"role": "user", "content": f"turn {i}"} for i in range(35)]  # -> 4 pseudo-sessions
+    (tmp_path / "shared_contexts_32k.jsonl").write_text(
+        json.dumps({"persona_id": "p1", "messages": msgs}) + "\n", encoding="utf-8"
+    )
+
+    full = personamem.load_dataset_slice(data_dir=tmp_path)
+    assert len(full.sessions) == 4 and len(full.probes) == 2
+    assert full.probes[0].answer == "dog"
+
+    smoke = personamem.load_dataset_slice(data_dir=tmp_path, limit=1, max_sessions=2)
+    assert len(smoke.sessions) == 2 and len(smoke.probes) == 1  # capped context + question count
+
+
+def test_dataset_loader_missing_data_gives_the_download_hint(tmp_path):
+    import pytest
+
+    with pytest.raises(RuntimeError, match="hf download bowen-upenn/PersonaMem"):
+        personamem.load_dataset_slice(data_dir=tmp_path / "nope")
+
+
 def test_summarise_reports_accuracy_and_abstention():
     rows = [
         {"type": "recall", "correct": True, "abstained": False},
