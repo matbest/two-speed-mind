@@ -44,6 +44,12 @@ class Compiler:
         # size. `seed` makes the sampling reproducible for tests.
         self.groom_rate = groom_rate
         self._rng = random.Random(seed)
+        # genes changed (promoted/re-promoted) since the last CLEANUP pass. Cleanup runs on a
+        # cadence, but promotion happens every pass — so a page promoted on a rank-only pass must
+        # wait here to get its eager cross-check at the next cleanup, or it slips through the
+        # cadence unchecked (a real bug: an update keyed to a fresh gene never contested the
+        # incumbent because fusion never compared them). Cleared after each cleanup consumes it.
+        self._dirty_genes: set[str] = set()
         self.last_report = CompileReport()  # the deep brain's receipt (spec §19)
         self._inserted_since_pass = 0
         # verdict cache (T18): a verdict about an unchanged pair never expires. Housekeeping
@@ -177,13 +183,15 @@ class Compiler:
                 self.store.clean[gene] = new_page
                 promoted.append(new_page)
 
+        self._dirty_genes.update(p.gene for p in promoted)  # accrue across passes, cleanup or not
         if cleanup:
-            # cross-page work over a BOUNDED pair set (spec §47): the pages that CHANGED this pass
-            # (eager — catches a fresh conflict the moment its second page lands) + random pairs
-            # (grooms the long tail). Fusion first (it may retire a page), then conflict curation.
-            pairs = self._pairs_to_check([p.gene for p in promoted])
+            # cross-page work over a BOUNDED pair set (spec §47): every page changed SINCE THE LAST
+            # CLEANUP (eager — so nothing slips through the cleanup cadence) + random pairs (grooms
+            # the long tail). Fusion first (it may retire a page), then conflict curation.
+            pairs = self._pairs_to_check([g for g in self._dirty_genes if g in self.store.clean])
             fused = self._fusion(pairs)
             queued = self._curate(pairs)
+            self._dirty_genes.clear()  # consumed — next window starts fresh
         self.last_report = CompileReport(
             inserted=self._inserted_since_pass,
             merged=merged,

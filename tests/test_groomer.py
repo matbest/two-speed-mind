@@ -76,6 +76,22 @@ def test_old_conflict_in_a_quiet_mind_is_caught_eventually():
     assert caught
 
 
+def test_change_off_the_cleanup_cadence_is_still_checked():
+    """The bug the ramen/green-curry miss exposed: a page promoted on a rank-only pass must still
+    get its eager cross-check at the next cleanup — not slip through the cadence."""
+    # same claim, two gene names (fragmentation); they must be recognised as one claim and fused
+    judge = TallyJudge(claim_of=lambda c: "usual_order" in c.gene and "order" or c.gene)
+    comp = Compiler(Store(), judge, promote_after=1, groom_rate=0, seed=1)  # no random grooming:
+    #                                                    only the eager frontier can catch this
+    comp.insert(_cand("food.usual_order", "usual order is green curry", ("food", "order")))
+    comp.housekeep(cleanup=True)          # green curry promoted + cleaned (alone, no pair yet)
+    comp.insert(_cand("food.dish.usual_order", "usual order these days is ramen", ("food", "order")))
+    comp.housekeep(cleanup=False)         # ramen promoted on a RANK-ONLY pass — no cleanup here
+    assert {"food.usual_order", "food.dish.usual_order"} <= set(comp.store.clean)  # both exist
+    comp.housekeep(cleanup=True)          # next cleanup: the dirty ramen page gets its eager check
+    assert comp.last_report.fused == 1    # ...and fuses with green curry (one claim, two genes)
+
+
 def test_disjoint_topics_are_never_sampled_into_a_call():
     # grooming is tag-biased, but even a random cross-topic pair is skipped by tag scoping
     judge = TallyJudge()
