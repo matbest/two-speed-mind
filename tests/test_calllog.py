@@ -49,6 +49,48 @@ def test_recent_feeds_the_live_panel_even_with_file_off(monkeypatch):
     calllog._recent.clear()
 
 
+def test_calls_panel_is_newest_first(monkeypatch):
+    from kaineros.view import calls_panel
+
+    monkeypatch.setattr(calllog, "_path", None)
+    calllog._recent.clear()
+    calllog.log("deep", "b", "m", "extract", "s", "the FIRST call", "o")
+    calllog.log("fast", "b", "m", "phrase", "s", "the SECOND call", "o")
+    panel = calls_panel(calllog.recent())
+    # newest first, so the latest survives the Panel's bottom-crop
+    assert panel.index("SECOND") < panel.index("FIRST")
+    calllog._recent.clear()
+
+
+def test_debug_command_sets_panel_depth():
+    from kaineros.cli import Session, _cmd_debug
+
+    s = Session()
+    s.cloud = True
+    assert _cmd_debug(s, ["10"]) is True and s.calls_lines == 10   # direct arg
+    assert _cmd_debug(s, ["off"]) is True and s.calls_lines == 0   # hide
+    assert _cmd_debug(s, ["off"]) is False                         # no change -> no repaint
+    # menu positions: 1=off 2=5 3=10 4=15 5=20
+    assert _cmd_debug(s, ["4"]) is True and s.calls_lines == 15
+    assert _cmd_debug(s, ["2"]) is True and s.calls_lines == 5
+
+
+def test_debug_panel_height_tracks_setting():
+    from kaineros.cli import Session, _calls_panel_height, _header_height
+
+    s = Session()
+    s.cloud = True
+    s.calls_lines = 0
+    assert _calls_panel_height(s) == 0
+    base = _header_height(s)
+    s.calls_lines = 20
+    assert _calls_panel_height(s) == 22  # 20 + border
+    assert _header_height(s) == base + 22
+    s.cloud = False  # offline: no panel regardless
+    s.calls_lines = 20
+    assert _calls_panel_height(s) == 0
+
+
 def test_recent_keeps_only_the_tail(monkeypatch):
     monkeypatch.setattr(calllog, "_path", None)
     calllog._recent.clear()

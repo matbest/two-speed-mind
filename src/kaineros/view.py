@@ -56,24 +56,24 @@ def deep_panel(
     return "\n".join(lines)
 
 
-def calls_panel(records: list[dict], height: int = 5) -> str:
-    """The live wire: the actual text most recently sent to a model. State in, text out.
+def calls_panel(records: list[dict]) -> str:
+    """The live wire: the actual text sent to the models. State in, text out.
 
-    Shows the newest call's input verbatim (what we ASK), headed by which brain and why. The
-    rendering Panel crops to its height, so a long prompt shows its opening lines — enough to
-    watch, in real time, exactly what the two minds are being asked.
+    Renders recent calls NEWEST-FIRST — each headed by which brain and why, then the verbatim
+    input we sent and the reply we got. The rendering Panel crops the bottom to its configured
+    height, so the newest call is always visible and a taller panel reveals more history.
     """
     if not records:
         return "no model calls yet - nothing has been asked (the fakes ask nothing)"
-    r = records[-1]
-    tok = f" · {r['tokens']:,} tok" if r.get("tokens") else ""
-    head = f"> {r.get('brain', '?')} · {r.get('purpose', '?')}{tok}"
-    body = " ".join((r.get("input") or "").split())  # collapse whitespace so 5 lines show more
-    reply = " ".join((r.get("output") or "").split())
-    lines = [head, body]
-    if reply:
-        lines.append(f"=> {reply}")
-    return "\n".join(lines)
+    blocks = []
+    for r in reversed(records):  # newest first: it survives the height crop
+        tok = f" · {r['tokens']:,} tok" if r.get("tokens") else ""
+        head = f"> {r.get('brain', '?')} · {r.get('purpose', '?')}{tok}"
+        body = " ".join((r.get("input") or "").split())  # collapse whitespace to pack more in
+        reply = " ".join((r.get("output") or "").split())
+        block = head + "\n" + body + (f"\n=> {reply}" if reply else "")
+        blocks.append(block)
+    return "\n\n".join(blocks)
 
 
 def fast_panel(

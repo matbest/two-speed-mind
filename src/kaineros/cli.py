@@ -39,6 +39,7 @@ HELP = (
     "  /metrics   run a benchmark live and score it - pick a family (conflict / retrieval)\n"
     "  /bench     external benchmarks (PersonaMem): pick sample / sample-big / dataset slice\n"
     "  /clear     wipe the screen and refresh the panels (keeps the mind)\n"
+    "  /debug     set the live model-call panel depth (off / 5 / 10 / 15 / 20 lines)\n"
     "  /forget    clear the short-term buffer   (/forget all erases the whole mind)\n"
     "  /quit      exit\n"
 )
@@ -116,6 +117,7 @@ class Session:
         self.on_compiled = None  # callback fired after each background pass (cockpit repaint)
         self._asked = None       # the question surfaced last turn, awaiting the user's answer
         self.running_note = None  # when set, the header shows a "running metric" banner
+        self.calls_lines = 5      # depth of the live model-call debug panel (0 = hidden); /debug
         self.retry_backoff = 0.5  # base seconds between failed-pass retries (tests shrink it)
         self._wake = threading.Event()
         if background:
@@ -291,16 +293,19 @@ def _timed(fn, show: bool):
 
 PANEL_HEIGHT = 9              # the two brain boxes
 BAR_HEIGHT = 1               # the posture strip above them
-CALLS_HEIGHT = 7             # the live model-call panel (5 content rows + border) — cloud only
+
+
+def _calls_panel_height(session: Session) -> int:
+    """Total rows the live-call debug panel occupies, or 0 if hidden. Cloud-only (the fakes ask
+    nothing); `session.calls_lines` (0/5/10/15/20 via /debug) sets its content depth."""
+    if not session.cloud or session.calls_lines <= 0:
+        return 0
+    return session.calls_lines + 2  # + top/bottom border
 
 
 def _header_height(session: Session) -> int:
-    """Rows the pinned header occupies. The live-call panel only appears for cloud backends
-    (the fakes ask nothing), so offline sessions keep the taller conversation area."""
-    h = BAR_HEIGHT + PANEL_HEIGHT
-    if session.cloud:
-        h += CALLS_HEIGHT
-    return h
+    """Rows the pinned header occupies — grows/shrinks with the debug panel's configured depth."""
+    return BAR_HEIGHT + PANEL_HEIGHT + _calls_panel_height(session)
 
 
 def _print_cockpit(console, session: Session) -> None:
@@ -336,14 +341,15 @@ def _print_cockpit(console, session: Session) -> None:
         Panel(fast, title="fast brain - this turn", height=PANEL_HEIGHT),
     )
     console.print(grid)
-    if session.cloud:  # the live wire: what we're actually asking the models, right now
+    calls_h = _calls_panel_height(session)
+    if calls_h:  # the live wire: what we're actually asking the models, right now (/debug)
         from . import calllog
 
         console.print(
             Panel(
                 calls_panel(calllog.recent()),
-                title="asking the models - live",
-                height=CALLS_HEIGHT,
+                title=f"asking the models - live  (/debug · {session.calls_lines} lines)",
+                height=calls_h,
             )
         )
 
@@ -652,6 +658,41 @@ def _cmd_metrics(session: Session, args: list[str], pinned: bool, console) -> No
         if pinned:
             _paint_header(console, session)
     print(f"\n  done - ran in profile 'metrics-{tag}'. /profile {prev} to return to your mind")
+
+
+_DEBUG_CHOICES = [("off", 0), ("5", 5), ("10", 10), ("15", 15), ("20", 20)]
+
+
+def _cmd_debug(session: Session, args: list[str]) -> bool:
+    """/debug — set the live model-call panel's depth (off / 5 / 10 / 15 / 20 lines).
+
+    Returns True if the value changed (the caller re-arms the pinned scroll region + repaints,
+    since the header's height moved)."""
+    if not session.cloud:
+        print("  the debug panel shows model calls - only shown on a cloud backend "
+              "(--claude / --openrouter). Nothing to configure offline.")
+        return False
+    labels = [f"{name} lines" if name != "off" else "off (hide the panel)" for name, _ in _DEBUG_CHOICES]
+    given = args[0].lower() if args else None
+    if given is None:
+        print(f"  live model-call panel is {session.calls_lines} lines. Set depth:")
+        for i, lab in enumerate(labels, 1):
+            print(f"    {i}) {lab}")
+        given = input("  > ").strip().lower()
+    value = None
+    if given.isdigit() and 1 <= int(given) <= len(_DEBUG_CHOICES):
+        value = _DEBUG_CHOICES[int(given) - 1][1]  # menu position
+    else:
+        for name, v in _DEBUG_CHOICES:  # or a direct arg: /debug 10, /debug off
+            if given == name:
+                value = v
+    if value is None:
+        print("  (unchanged)")
+        return False
+    changed = value != session.calls_lines
+    session.calls_lines = value
+    print(f"  debug panel: {'hidden' if value == 0 else f'{value} lines'}")
+    return changed
 
 
 def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None:
@@ -1039,6 +1080,9 @@ def main(argv: list[str] | None = None) -> int:
                         _paint_header(console, session)
             elif cmd == "/clear":
                 _clear_screen(console, session, pinned)
+            elif cmd == "/debug":
+                if _cmd_debug(session, line.split()[1:]) and pinned:
+                    _clear_screen(console, session, pinned)  # header height moved: re-arm + repaint
             elif cmd == "/forget":
                 if line.split()[1:] == ["all"]:
                     sure = input("  really erase the whole mind from disk? type yes: ").strip()
