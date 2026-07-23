@@ -78,6 +78,7 @@ def finish(entry: dict, output: str, tokens: int | None = None) -> None:
     with _lock:
         entry["output"] = output
         entry["tokens"] = tokens
+        entry["elapsed"] = round(time.time() - entry["at"], 1)  # reply latency (round-trip)
         entry["pending"] = False
         if _path is not None:
             rec = {k: v for k, v in entry.items() if k != "pending"}

@@ -42,10 +42,12 @@ def test_pending_then_reply(monkeypatch):
     calllog._recent.clear()
     entry = calllog.begin("deep", "claude-cli", "sonnet", "extract", "sys", "compile this")
     panel = calls_panel(calllog.recent())
-    assert "compile this" in panel and "awaiting reply" in panel   # request visible immediately
+    assert "compile this" in panel                       # the request shows immediately
+    assert '{"candidates": []}' not in panel             # no reply yet, no clutter
     calllog.finish(entry, '{"candidates": []}', tokens=910)
     panel = calls_panel(calllog.recent())
-    assert "awaiting reply" not in panel and '{"candidates": []}' in panel  # raw reply landed
+    assert '{"candidates": []}' in panel                 # the raw reply landed
+    assert "s" in panel and entry["elapsed"] is not None  # with its latency stamp
     calllog._recent.clear()
 
 

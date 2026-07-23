@@ -67,14 +67,16 @@ def calls_panel(records: list[dict]) -> str:
         return "no model calls yet - nothing has been asked (the fakes ask nothing)"
     blocks = []
     for r in reversed(records):  # newest first: it survives the height crop
-        tok = f" · {r['tokens']:,} tok" if r.get("tokens") else ""
-        head = f"> {r.get('brain', '?')} · {r.get('purpose', '?')}{tok}"
         body = " ".join((r.get("input") or "").split())  # collapse whitespace to pack more in
-        if r.get("pending"):
-            tail = "\n=> ...awaiting reply..."       # request sent, model still thinking
+        if r.get("pending"):  # request sent, model still thinking — just the ask, no reply line
+            meta, tail = "", ""
         else:
+            tok = f" · {r['tokens']:,} tok" if r.get("tokens") else ""
+            el = f" · {r['elapsed']:.1f}s" if r.get("elapsed") is not None else ""
+            meta = tok + el
             reply = " ".join((r.get("output") or "").split())
             tail = f"\n=> {reply}" if reply else ""  # the raw reply, verbatim
+        head = f"> {r.get('brain', '?')} · {r.get('purpose', '?')}{meta}"
         blocks.append(head + "\n" + body + tail)
     return "\n\n".join(blocks)
 
