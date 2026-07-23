@@ -122,21 +122,24 @@ def conflicts_prompt(a: Candidate, b: Candidate) -> str:
     )
 
 
+# Deliberately TINY — the fast brain runs a weak model, and a long prompt is something for it to
+# trip over (it will quote forbidden phrases back at you). The facts arrive pre-chewed as
+# `key = value` (spec §48), so its job is near-lookup: find the value, say it. Conflict handling
+# is NOT its job — the deep brain resolves conflicts by queueing questions (spec §36), so the
+# notes it reads are already settled; giving a weak model a "say both versions" rule only makes
+# it agonise (observed: it spiralled on a clean note). Keep this short.
 PHRASE_SYSTEM = (
-    "You are the voice of a personal assistant. Answer the user's question using ONLY the "
-    "retrieved notes. Never invent facts; if the notes genuinely conflict, say both versions.\n"
-    "Reply with ONLY the answer itself — one short sentence. Do NOT restate the question, do NOT "
-    "write preamble or meta-commentary ('We need to answer', 'Using the notes', 'So the answer "
-    "is'), do NOT show your reasoning. Start directly with the fact."
+    "You answer questions about the user from a list of facts, each written `key = value`. "
+    "The value is the answer. Reply with just the answer, in as few words as possible — no "
+    "explanation, no preamble, no restating the question. If no fact answers it, say: I don't know."
 )
 
 
 def _note(p: Page) -> str:
-    # lead with the bare answer (spec §48) so the fast brain reads the value, not a sentence it
-    # can misparse; keep the sentence in parens for nuance
-    if p.gist:
-        return f"- {p.gene} = {p.gist}  ({p.content})"
-    return f"- [{p.gene}] {p.content}"
+    # pure key = value for the fast brain (spec §48): nothing to misparse. The sentence stays in
+    # the wiki for humans; the weak model reads only the bare triple. Fall back to the sentence
+    # only when a fact has no gist.
+    return f"- {p.gene} = {p.gist}" if p.gist else f"- {p.gene}: {p.content}"
 
 
 def phrase_user(question: str, pages: list[Page], buffer: list[Turn]) -> str:

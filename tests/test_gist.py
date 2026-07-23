@@ -23,22 +23,22 @@ def test_promotion_carries_the_gist_onto_the_page():
     assert comp.store.clean["user.food.favorite_cuisine"].gist == "japanese"
 
 
-def test_phrase_notes_lead_with_the_gist():
+def test_phrase_notes_are_bare_triples_for_the_dumb_model():
     prov = Provenance(stated=True)
     page = Page(gene="user.food.favorite_cuisine",
                 content="The user now prefers Japanese food over Thai.",
                 provenance=prov, gist="japanese")
     note = phrase_user("What cuisine should you suggest?", [page], [])
-    # the bare answer is right there as a triple, sentence kept in parens for nuance
-    assert "user.food.favorite_cuisine = japanese" in note
-    assert "prefers Japanese food over Thai" in note  # the sentence survives too
+    assert "user.food.favorite_cuisine = japanese" in note  # pure key = value, nothing to misread
+    # the confusable sentence is NOT fed to the weak fast model (it lives in the wiki for humans)
+    assert "prefers Japanese food over Thai" not in note
 
 
 def test_no_gist_falls_back_to_the_sentence():
     prov = Provenance(stated=True)
     page = Page(gene="user.home", content="The user lives in St Leonards.", provenance=prov)
     note = phrase_user("Where do I live?", [page], [])
-    assert "[user.home] The user lives in St Leonards." in note  # unchanged when no gist
+    assert "user.home: The user lives in St Leonards." in note  # falls back when no gist
 
 
 def test_gist_round_trips_and_reaches_the_wiki(tmp_path):

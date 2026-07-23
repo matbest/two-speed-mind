@@ -344,10 +344,14 @@ This prototype proves the *architecture* — with the model faked — as a comma
     gene is the *question*; the gist is the *value* — together a subject-predicate-object triple,
     the structured form the fast brain reads without parsing (or misparsing) a sentence. Minted at
     extraction beside `content`, it travels with the winning allele onto the page, and the fast
-    brain's notes lead with it (`user.food.favorite_cuisine = japanese  (the user now prefers
-    Japanese…)`). **Both, not either:** the sentence stays for nuance and human reading; the gist
-    is the terse handle. A weak fast model that would agonise over "prefers Japanese over Thai"
-    answers cleanly from `= japanese`. (This is also the natural bridge to a knowledge-graph /
-    OKF rendering of the kainome — the triples are already there.)
+    brain reads **only** the bare triples (`- user.food.favorite_cuisine = japanese`), never the
+    sentence — the goal is to make the wiki trivial for a *weak* model, and a confusable sentence
+    ("prefers Japanese over Thai") is exactly what makes it wander. The sentence stays in the wiki
+    for humans and for `content` audit; the fast path is pure `key = value`. The fast prompt is
+    kept **tiny** for the same reason (a long prompt is something a weak model quotes back and
+    trips over), and conflict handling is deliberately NOT the fast brain's job — the deep brain
+    settles conflicts by queueing questions (§36), so the notes are already resolved by the time
+    the fast brain reads them. (The triples are also the natural bridge to a knowledge-graph / OKF
+    rendering of the kainome — they're already there.)
 
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.
