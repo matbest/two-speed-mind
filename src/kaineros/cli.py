@@ -38,6 +38,7 @@ HELP = (
     "  /persona   /persona <name> builds a fresh wiki from a scripted person (watch it grow)\n"
     "  /metrics   run a benchmark live and score it - pick a family (conflict / retrieval)\n"
     "  /bench     external benchmarks (PersonaMem): pick sample / sample-big / dataset slice\n"
+    "  /clear     wipe the screen and refresh the panels (keeps the mind)\n"
     "  /forget    clear the short-term buffer   (/forget all erases the whole mind)\n"
     "  /quit      exit\n"
 )
@@ -402,6 +403,23 @@ def _enter_cockpit_screen(console, session: Session) -> None:
 def _exit_cockpit_screen() -> None:
     sys.stdout.write("\x1b[r\n")  # restore full-screen scrolling
     sys.stdout.flush()
+
+
+def _clear_screen(console, session: Session, pinned: bool) -> None:
+    """/clear — wipe the conversation area and repaint. Keeps the mind (that's /forget); doubles
+    as a refresh, since it redraws the header with the current backlog and live-call panel."""
+    if pinned and console is not None:
+        rows = console.size.height
+        sys.stdout.write("\x1b[2J")                                        # clear everything
+        sys.stdout.write(f"\x1b[{_header_height(session) + 1};{rows}r")    # re-arm scroll region
+        sys.stdout.write(f"\x1b[{rows};1H")                                # cursor to the bottom
+        sys.stdout.flush()
+        _paint_header(console, session)
+    else:
+        sys.stdout.write("\x1b[2J\x1b[H")  # plain clear + home
+        sys.stdout.flush()
+        if console is not None:
+            _print_cockpit(console, session)
 
 
 def _wait_for_reset(console, vt_ok: bool, reset_at: float) -> bool:
@@ -1019,6 +1037,8 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  switched to '{name}' - {len(session.store.pages())} pages")
                     if pinned:
                         _paint_header(console, session)
+            elif cmd == "/clear":
+                _clear_screen(console, session, pinned)
             elif cmd == "/forget":
                 if line.split()[1:] == ["all"]:
                     sure = input("  really erase the whole mind from disk? type yes: ").strip()
