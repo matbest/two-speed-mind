@@ -215,7 +215,8 @@ def _json(content: str) -> dict:
 def preflight(model: str = FAST_MODEL) -> None:
     """Fail fast with a clear message — one tiny fast-model call proves key + route."""
     try:
-        _chat(model, "You reply with the single word: ok", "ping", max_tokens=8)
+        _chat(model, "You reply with the single word: ok", "ping", max_tokens=8,
+              brain="fast", purpose="preflight")
     except RuntimeError:
         raise
     except Exception as exc:

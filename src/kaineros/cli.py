@@ -411,6 +411,22 @@ def _exit_cockpit_screen() -> None:
     sys.stdout.flush()
 
 
+def _watch_compile(console, session: Session) -> None:
+    """After a statement, let the user WATCH the deep brain compile it: repaint the header on the
+    MAIN thread (safe) every ~0.4s while the backlog drains, so the extract call appears in the
+    live panel and the backlog counts down to zero. Ctrl-C bails to the prompt (the compile keeps
+    running in the background). Only the next prompt waits — the answer was already given."""
+    deadline = time.time() + 45  # a hard cap so a slow/rate-limited model never hangs the prompt
+    try:
+        while session.backlog() > 0 and time.time() < deadline:
+            session._wake.set()  # make sure the worker is actually chewing
+            _paint_header(console, session)
+            time.sleep(0.4)
+        _paint_header(console, session)  # final frame: backlog 0, the last call still shown
+    except KeyboardInterrupt:
+        print("  (watching stopped - compile continues in the background)")
+
+
 def _clear_screen(console, session: Session, pinned: bool) -> None:
     """/clear — wipe the conversation area and repaint. Keeps the mind (that's /forget); doubles
     as a refresh, since it redraws the header with the current backlog and live-call panel."""
@@ -1114,6 +1130,16 @@ def main(argv: list[str] | None = None) -> int:
         q = session.take_question()  # the mind asks a queued disambiguation, if any (spec §38)
         if q is not None:
             print("mind? " + q.text)
+        # with the live panel open, pause after a STATEMENT to watch the deep brain compile it
+        # (a question already gave you an answer to act on — don't make you wait to read it)
+        if (
+            pinned
+            and session.background
+            and session.calls_lines > 0
+            and not _is_question(line)
+            and session.backlog() > 0
+        ):
+            _watch_compile(console, session)
 
       if session.background and session.backlog() > 0:
           print(f"(compiling {session.backlog()} remaining turn(s) before quitting...)")
