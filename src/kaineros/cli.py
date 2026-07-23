@@ -38,6 +38,7 @@ HELP = (
     "  /persona   /persona <name> builds a fresh wiki from a scripted person (watch it grow)\n"
     "  /metrics   run a benchmark live and score it - pick a family (conflict / retrieval)\n"
     "  /bench     external benchmarks (PersonaMem): pick sample / sample-big / dataset slice\n"
+    "  /prompt    print the static system prompts + schemas we send (extract / judge / phrase)\n"
     "  /clear     wipe the screen and refresh the panels (keeps the mind)\n"
     "  /debug     set the live model-call panel depth (off / 5 / 10 / 15 / 20 lines)\n"
     "  /forget    clear the short-term buffer   (/forget all erases the whole mind)\n"
@@ -676,6 +677,66 @@ def _cmd_metrics(session: Session, args: list[str], pinned: bool, console) -> No
     print(f"\n  done - ran in profile 'metrics-{tag}'. /profile {prev} to return to your mind")
 
 
+def _cmd_prompt(_session: Session, args: list[str]) -> None:
+    """/prompt — print the static system prompts + schemas we send the models, so the rules the
+    live panel doesn't show (they're in the system prompt) are inspectable on demand."""
+    from .cloud import (
+        EXTRACT_SCHEMA,
+        EXTRACT_SYSTEM,
+        JUDGE_SYSTEM,
+        PHRASE_SYSTEM,
+        better_prompt,
+        conflicts_prompt,
+        phrase_user,
+        same_account_prompt,
+        same_claim_prompt,
+    )
+    from .schema import Candidate, Page, Provenance
+
+    topics = ["extract", "judge", "phrase", "all"]
+    which = args[0].lower() if args else None
+    if which not in topics:
+        print("  which prompt?  " + " / ".join(topics[:-1]) + "  (or 'all')")
+        raw = input("  > ").strip().lower()
+        which = raw if raw in topics else None
+    if which is None:
+        print("  (cancelled)")
+        return
+
+    import json as _json
+
+    prov = Provenance(stated=True)
+    a = Candidate(gene="user.food.pref", content="The user loves Thai food.", provenance=prov,
+                  tags=("food", "cuisine"))
+    b = Candidate(gene="user.food.pref", content="The user now prefers Japanese food.",
+                  provenance=prov, tags=("food", "cuisine"))
+    page = Page(gene="user.home_city", content="The user lives in St Leonards.", provenance=prov)
+
+    def section(title: str, system: str, user: str) -> None:
+        print(f"\n===== {title} =====")
+        print("--- system ---")
+        print(system)
+        print("--- user (example) ---")
+        print(user)
+
+    if which in ("extract", "all"):
+        section("EXTRACT (deep)", EXTRACT_SYSTEM,
+                "Conversation turns:\n[0] I drive a Tesla and I'm allergic to nuts"
+                "\n\n(+ the JSON schema below, appended for backends without native schema forcing)")
+        print("--- schema ---")
+        print(_json.dumps(EXTRACT_SCHEMA, indent=2))
+    if which in ("judge", "all"):
+        print(f"\n===== JUDGE (deep) =====\n--- system ---\n{JUDGE_SYSTEM}")
+        print("--- the four questions (example A/B) ---")
+        print("\n[better]\n" + better_prompt("user.food.pref", a, b))
+        print("\n[same_claim]\n" + same_claim_prompt("user.food.pref", a, b))
+        print("\n[same_account]\n" + same_account_prompt("user.food.pref", a, b))
+        print("\n[conflicts]\n" + conflicts_prompt(a, b))
+    if which in ("phrase", "all"):
+        section("PHRASE (fast)", PHRASE_SYSTEM, phrase_user("Where do I live?", [page], []))
+    print()
+
+
 _DEBUG_CHOICES = [("off", 0), ("5", 5), ("10", 10), ("15", 15), ("20", 20)]
 
 
@@ -1094,6 +1155,8 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  switched to '{name}' - {len(session.store.pages())} pages")
                     if pinned:
                         _paint_header(console, session)
+            elif cmd == "/prompt":
+                _cmd_prompt(session, line.split()[1:])
             elif cmd == "/clear":
                 _clear_screen(console, session, pinned)
             elif cmd == "/debug":
