@@ -278,20 +278,27 @@ def run_slice(
 
     counting = _CountingJudge(session.compiler.judge)
     session.compiler.judge = counting
+    # ingest keeps the CHEAP rank+promote (bounded by new facts) but NOT the expensive cross-page
+    # cleanup — push the cadence out of reach so cleanup only happens in the explicit pre-probe
+    # groom (spec §49). This is why ingest was slowing down: every 4th session used to fire a
+    # full cross-page sweep over the whole growing mind.
+    session.cleanup_every = 10**9
     inserted = 0
     rows: list[dict] = []
     for i, turns in enumerate(sl.sessions):
-        say(f"{pct()} session {i + 1}/{len(sl.sessions)}: compiling {len(turns)} turn(s) "
-            "(extract + judge - slow on a real deep model)...")
+        say(f"{pct()} session {i + 1}/{len(sl.sessions)}: ingesting {len(turns)} turn(s) "
+            "(extract + rank - no cross-page grooming yet)...")
         d0, t0 = session.deep_meter.total, time.time()
         for text in turns:
             session.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
+        # ingest: extract + append + cheap rank/promote, but NO cross-page cleanup (deferred to the
+        # pre-probe groom). Roughly fixed cost per session regardless of mind size (spec §49).
         session.consolidate()
         if wait_idle is not None:
             wait_idle()
         inserted += getattr(session.compiler.last_report, "inserted", 0)
         done += 1
-        say(f"{pct()} session {i + 1} compiled in {time.time() - t0:.0f}s "
+        say(f"{pct()} session {i + 1} ingested in {time.time() - t0:.0f}s "
             f"({session.deep_meter.total - d0:,} deep tok, {len(session.store.pages())} page(s))")
         if i not in by_pos:
             continue

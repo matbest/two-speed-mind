@@ -128,7 +128,12 @@ class Session:
         return len(self.buffer) - self.compiled_upto
 
     def consolidate(self) -> list[Page]:
-        """Run the slow brain over the un-compiled tail only (exactly-once), then housekeep."""
+        """Run the slow brain over the un-compiled tail only (exactly-once), then housekeep.
+
+        The expensive CROSS-PAGE work (fusion/conflicts) runs only on the `cleanup_every` cadence;
+        set that high (as the bench does during ingest) to keep ingest cheap and defer cross-page
+        grooming to an explicit later pass (spec §49) — otherwise ingesting a growing mind gets
+        slower each session."""
         upto = len(self.buffer)  # snapshot: turns arriving mid-pass belong to the next pass
         fresh = self.buffer[self.compiled_upto : upto]
         candidates = self.slow.extract(fresh)
