@@ -1051,22 +1051,29 @@ def main(argv: list[str] | None = None) -> int:
             # mixed build: deep brain on the Claude subscription (claude -p), fast brain on the
             # OpenRouter free tier. The deep brain is off the interactive path, so the seconds
             # of CLI startup per call are invisible; the fast brain stays a quick HTTP call.
+            #
+            # --fast=<model> points the fast brain at a specific OpenRouter model — used to
+            # STAND IN for a local model (e.g. --fast=qwen/qwen3-32b, a dense 32B that fits in
+            # 64GB): it answers "would the model I'd run locally clear this?" before building
+            # local inference. NB: a non-free model spends OpenRouter credits (cents for probes).
             from .claude_cli import DEEP_MODEL as CLI_DEEP
             from .claude_cli import ClaudeCLIJudge, ClaudeCLISlowModel
             from .claude_cli import preflight as cli_preflight
             from .openrouter import FREE_FAST_MODEL, OpenRouterFastModel, ensure_key
             from .openrouter import preflight as or_preflight
 
+            fast = next((a.split("=", 1)[1] for a in args if a.startswith("--fast=")), FREE_FAST_MODEL)
             cli_preflight()  # proves the binary + login before we accept any turns
             ensure_key()
-            or_preflight(FREE_FAST_MODEL)  # RateLimitedError → the countdown loop waits it out
+            or_preflight(fast)  # RateLimitedError → the countdown loop waits it out
             s = Session(store_dir=mind, background=True, cleanup_every=4)
             s.compiler.judge = ClaudeCLIJudge(meter=s.deep_meter)
             s.slow = ClaudeCLISlowModel(meter=s.deep_meter)
-            s.runtime.model = OpenRouterFastModel(FREE_FAST_MODEL, meter=s.fast_meter)
+            s.runtime.model = OpenRouterFastModel(fast, meter=s.fast_meter)
             s.cloud = True
             s.backend_label = "DEBUG - CLOUD"
-            s.backend_detail = f"Claude sub ({CLI_DEEP}) + OpenRouter free"
+            detail = "free" if fast == FREE_FAST_MODEL else fast.split("/")[-1] + " (local stand-in)"
+            s.backend_detail = f"Claude sub ({CLI_DEEP}) + OpenRouter {detail}"
             s.offdevice = True
             return s
         if "--openrouter" in args or "--free" in args:
