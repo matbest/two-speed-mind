@@ -334,12 +334,19 @@ def _print_cockpit(console, session: Session) -> None:
         pending_questions=len(session.store.pending_questions()),
     )
     fast = fast_panel(resp.trace if resp else None, resp, session.buffer, fm.total, fm.last_hour())
+
+    def _model_name(brain) -> str:
+        m = getattr(brain, "model", None)
+        return m.split("/")[-1] if isinstance(m, str) and m else "fakes"
+
+    deep_title = f"deep brain · {_model_name(session.slow)}"
+    fast_title = f"fast brain · {_model_name(getattr(session.runtime, 'model', None))}"
     grid = Table.grid(expand=True)
     grid.add_column(ratio=1)
     grid.add_column(ratio=1)
     grid.add_row(
-        Panel(deep, title="deep brain - slow, off the clock", height=PANEL_HEIGHT),
-        Panel(fast, title="fast brain - this turn", height=PANEL_HEIGHT),
+        Panel(deep, title=deep_title, height=PANEL_HEIGHT),
+        Panel(fast, title=fast_title, height=PANEL_HEIGHT),
     )
     console.print(grid)
     calls_h = _calls_panel_height(session)
