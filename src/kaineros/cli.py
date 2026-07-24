@@ -794,8 +794,9 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         "slice": "real PersonaMem, full 32k persona (~15-30 min on the sub, Ctrl-C-able) - the real thing",
     }
     names = list(benches)
-    if args:
-        which = args[0].lower()
+    pos = [a for a in args if "=" not in a]  # positional args; key=value flags (groom=) excluded
+    if pos:
+        which = pos[0].lower()
         if which.isdigit() and 1 <= int(which) <= len(names):
             which = names[int(which) - 1]
     else:
@@ -816,8 +817,8 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
             # fixed tiny params, no prompts — just prove the real-data loader works end to end
             sl = personamem.load_dataset_slice(limit=2, max_sessions=3)
         else:  # slice — the full persona
-            persona = args[1] if len(args) > 1 else (input("  persona id (blank = first)> ").strip() or None)
-            raw = args[2] if len(args) > 2 else input("  how many questions? [10]> ").strip()
+            persona = pos[1] if len(pos) > 1 else (input("  persona id (blank = first)> ").strip() or None)
+            raw = pos[2] if len(pos) > 2 else input("  how many questions? [10]> ").strip()
             limit = int(raw) if raw.isdigit() else 10
             sl = personamem.load_dataset_slice(persona=persona, limit=limit)
     except (RuntimeError, OSError) as exc:
