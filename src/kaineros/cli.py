@@ -928,6 +928,8 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     calls = (stats.get("judge_calls", {}) or {}).get("total", 0) + len(sl.sessions)  # judge + extracts
     per = f", ~{elapsed / calls:.1f}s/call" if calls else ""
     mins = f"{int(elapsed // 60)}m {int(elapsed % 60)}s" if elapsed >= 60 else f"{elapsed:.0f}s"
+    right = sum(r["correct"] for r in rows)
+    score = f"{right}/{len(rows)} = {right / len(rows):.2f}" if rows else "no probes"
     print(f"  cost {dtok:,} deep + {ftok:,} fast tok")
     print(f"  time {mins}  ({calls} deep calls{per} - wall-clock is bound by sequential claude -p)")
     out = Path(__file__).resolve().parents[2] / "bench-results"
@@ -948,7 +950,8 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         if wiki.exists():  # ctrl+clickable in Windows Terminal / VS Code
             index = wiki / "index.md"
             print(f"          {(index if index.exists() else wiki).as_uri()}  (ctrl+click to open)")
-    print(f"  done - ran in profile '{target}'. /profile {prev} to return to your mind")
+    print(f"  done in {mins}  ({score}) - ran in profile '{target}'. "
+          f"/profile {prev} to return to your mind")
 
 
 def _cmd_persona(session: Session, args: list[str], pinned: bool, console) -> None:
