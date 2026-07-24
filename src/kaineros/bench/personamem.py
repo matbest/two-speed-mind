@@ -257,15 +257,16 @@ class _CountingJudge:
 
 
 def run_slice(
-    session, sl: Slice, say=lambda s: None, wait_idle=None, groom_passes: int = 3
+    session, sl: Slice, say=lambda s: None, wait_idle=None, think_seconds: float = 60.0
 ) -> tuple[list[dict], dict]:
     """Feed sessions, settle, probe. Returns (rows, population_stats). UI-free: `say` narrates,
     `wait_idle` drains a background worker (the CLI passes its progress-printing drain).
 
-    Ingest is cheap now (append-only, spec §49) — the judge doesn't run at insert. Before each
-    probe the mind is groomed for a BOUNDED `groom_passes` (not to completion): each pass is one
-    O(n) bubble (rank) + one budgeted cross-page cleanup, so the wiki is 'groomed so far'. More
-    passes = a cleaner wiki = better answers, at more judge calls; the knob trades the two."""
+    Ingest is cheap (spec §49) — the judge doesn't run at insert, and no cross-page grooming.
+    Then the deep brain GROOMS for a wall-clock budget (`think_seconds`) before probing: it runs
+    cleanup passes until the time is up OR the mind converges (a pass makes no new comparisons).
+    This models 'how long has the deep brain had to think' — a minute for a quick run, or make it
+    long to simulate an overnight think. More thinking time = a cleaner wiki = better answers."""
     by_pos: dict[int, list[Probe]] = {}
     for p in sl.probes:
         by_pos.setdefault(min(p.after_session, len(sl.sessions) - 1), []).append(p)
@@ -302,11 +303,22 @@ def run_slice(
             f"({session.deep_meter.total - d0:,} deep tok, {len(session.store.pages())} page(s))")
         if i not in by_pos:
             continue
-        # a BOUNDED groom before probing (spec §49): each pass is a bubble (rank) + budgeted
-        # cross-page cleanup. NOT to completion — the fast brain reads the wiki as groomed so far.
-        say(f"{pct()} grooming {groom_passes} pass(es) before probing...")
-        for _ in range(groom_passes):
+        # the deep brain THINKS (grooms) for a wall-clock budget before probing (spec §49): run
+        # cleanup passes until the time is up OR the mind converges (a pass makes no new calls).
+        say(f"{pct()} deep brain thinking (grooming) for up to {think_seconds:.0f}s...")
+        deadline = time.time() + think_seconds
+        gp = 0
+        while time.time() < deadline:
+            before = sum(counting.counts.values())
             session.compiler.housekeep(cleanup=True)
+            gp += 1
+            new = sum(counting.counts.values()) - before
+            left = max(0, int(deadline - time.time()))
+            say(f"{pct()} ...thought {gp} pass(es), {new} new checks, {left}s left, "
+                f"{len(session.store.pages())} pages")
+            if new == 0:  # nothing left to compare — the mind has settled
+                say(f"{pct()} deep brain settled (converged after {gp} pass(es))")
+                break
         for probe in by_pos[i]:
             say(f"{pct()} probe: {probe.question[:60]}")
             d0, f0 = session.deep_meter.total, session.fast_meter.total

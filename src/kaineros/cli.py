@@ -906,13 +906,13 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         beater = threading.Thread(target=_beat, daemon=True)
         beater.start()
     try:
-        # pre-probe groom budget (spec §49): how many bounded groom passes before each probe.
-        # override on the command line, e.g. `/bench 4  groom=1` for the fastest, messiest run.
-        groom = next((int(a.split("=")[1]) for a in args if a.startswith("groom=")
-                      and a.split("=")[1].isdigit()), 3)
+        # how long the deep brain THINKS (grooms) before probing, in seconds (spec §49). Default
+        # 60; make it long to simulate an overnight think, e.g. `/bench 4 think=600`.
+        think = next((float(a.split("=")[1]) for a in args if a.startswith("think=")
+                      and a.split("=")[1].replace(".", "", 1).isdigit()), 60.0)
         rows, stats = personamem.run_slice(
             session, sl, say=_say, wait_idle=drain if session.background else None,
-            groom_passes=groom,
+            think_seconds=think,
         )
     except KeyboardInterrupt:
         print("\n  (bench cancelled - scoring what ran)")
