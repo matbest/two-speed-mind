@@ -910,6 +910,13 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         # 60; make it long to simulate an overnight think, e.g. `/bench 4 think=600`.
         think = next((float(a.split("=")[1]) for a in args if a.startswith("think=")
                       and a.split("=")[1].replace(".", "", 1).isdigit()), 60.0)
+        # routek=N: how many pages the fast brain retrieves per probe (default 3). Higher surfaces
+        # the needed fact when the mind has many pages, at a slightly longer fast-brain prompt.
+        routek = next((int(a.split("=")[1]) for a in args if a.startswith("routek=")
+                       and a.split("=")[1].isdigit()), None)
+        if routek:
+            session.runtime.route_k = routek
+            print(f"  (retrieving top-{routek} pages per probe)")
         rows, stats = personamem.run_slice(
             session, sl, say=_say, wait_idle=drain if session.background else None,
             think_seconds=think,
