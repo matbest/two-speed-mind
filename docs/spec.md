@@ -373,4 +373,19 @@ This prototype proves the *architecture* — with the model faked — as a comma
     a constant rate in the background. The wiki is *eventually* ordered; for real use (ingest now,
     query later) that is invisible and ideal.
 
+**Summarise mode: consolidate fragments (§50)**
+50. The extractor keys one fact per gene, so a single aspect of the user ("makes music digitally
+    with software") fragments across many narrow pages (`music_producer`, `skill.daw`,
+    `production_experience`, `music_production.start_year`…). That **dilutes retrieval** — the
+    signal is spread thin, so no page scores high and the fast brain must reassemble scraps
+    (measured: PersonaMem persona 0 → 83 pages, the answer's facts scattered rank 5–70).
+    Grooming therefore includes a **summarise** step: it finds a cluster of promoted pages sharing
+    a specific tag (count in `[summarise_min, summarise_max]` — big enough to be worth merging,
+    small enough not to swallow a broad topic like all 28 "music" pages), and the deep model
+    distils them into ONE dense page that preserves the specifics and carries every source tag
+    (so it retrieves for any of them). The fragments retire into it; the raw record (§46) still
+    holds the detail. One consolidation per cleanup pass — bounded, a deep call. Fewer, denser
+    pages: better retrieval, cheaper grooming, and the consolidated page *is* the evolution the
+    harder probes ask for.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

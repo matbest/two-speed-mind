@@ -1077,6 +1077,7 @@ def main(argv: list[str] | None = None) -> int:
             s = Session(store_dir=mind, background=True)
             s.compiler.judge = CloudJudge(meter=s.deep_meter)
             s.slow = CloudSlowModel(meter=s.deep_meter)
+            s.compiler.summariser = s.slow  # enable consolidation (spec §50)
             s.runtime.model = CloudFastModel(meter=s.fast_meter)
             s.cloud = True
             s.backend_label, s.backend_detail, s.offdevice = "DEBUG - CLOUD", "Claude API", True
@@ -1103,6 +1104,7 @@ def main(argv: list[str] | None = None) -> int:
             s = Session(store_dir=mind, background=True, cleanup_every=4)
             s.compiler.judge = ClaudeCLIJudge(meter=s.deep_meter)
             s.slow = ClaudeCLISlowModel(meter=s.deep_meter)
+            s.compiler.summariser = s.slow  # enable consolidation (spec §50)
             s.runtime.model = OpenRouterFastModel(fast, meter=s.fast_meter)
             s.cloud = True
             s.backend_label = "DEBUG - CLOUD"
@@ -1132,6 +1134,7 @@ def main(argv: list[str] | None = None) -> int:
             s = Session(store_dir=mind, background=True, cleanup_every=4)
             s.compiler.judge = OpenRouterJudge(deep, meter=s.deep_meter)
             s.slow = OpenRouterSlowModel(deep, meter=s.deep_meter)
+            s.compiler.summariser = s.slow  # enable consolidation (spec §50)
             s.runtime.model = OpenRouterFastModel(fast, meter=s.fast_meter)
             s.cloud = True
             s.backend_label = "DEBUG - CLOUD"

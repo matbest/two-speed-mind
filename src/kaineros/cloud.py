@@ -142,6 +142,19 @@ def _note(p: Page) -> str:
     return f"- {p.gene} = {p.gist}" if p.gist else f"- {p.gene}: {p.content}"
 
 
+SUMMARISE_SYSTEM = (
+    "You consolidate several related facts about ONE aspect of a user into a single dense, "
+    "self-contained sentence — preserving the key specifics (names, dates, preferences, what they "
+    "tried/dropped). It must read well years later without the originals, and be rich in the words "
+    "someone would use to ASK about this. Reply with ONLY the sentence — no preamble, no list."
+)
+
+
+def summarise_user(topic: str, facts: list[str]) -> str:
+    joined = "\n".join(f"- {f}" for f in facts)
+    return f"Topic: {topic}\nFacts to consolidate into one sentence:\n{joined}"
+
+
 def phrase_user(question: str, pages: list[Page], buffer: list[Turn]) -> str:
     notes = "\n".join(_note(p) for p in pages)
     recent = "\n".join(f"{t.speaker}: {t.text}" for t in buffer[-6:])
@@ -326,6 +339,14 @@ class CloudSlowModel:
         _meter(self.meter, resp)
         items = json.loads(_first_text(resp))["candidates"]
         return candidates_from_items(items, users)
+
+    def summarise(self, topic: str, facts: list[str]) -> str:
+        resp = self.client.messages.create(
+            model=self.model, max_tokens=400, system=SUMMARISE_SYSTEM,
+            messages=[{"role": "user", "content": summarise_user(topic, facts)}],
+        )
+        _meter(self.meter, resp)
+        return _first_text(resp).strip()
 
 
 class CloudFastModel:

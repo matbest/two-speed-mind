@@ -44,6 +44,14 @@ class Compiler:
         # size. `seed` makes the sampling reproducible for tests.
         self.groom_rate = groom_rate
         self._rng = random.Random(seed)
+        # summarise mode (spec §50): consolidate a fragmented cluster (many narrow pages about one
+        # aspect of the user) into ONE dense page, so retrieval isn't diluted. Off unless a model
+        # providing `summarise` is wired in (`self.summariser`). `summarise_min/max` bound which
+        # clusters qualify — big enough to be worth merging, small enough not to over-consolidate a
+        # broad topic (e.g. all 28 "music" pages).
+        self.summariser = None
+        self.summarise_min = 4
+        self.summarise_max = 10
         # genes changed (promoted/re-promoted) since the last CLEANUP pass. Cleanup runs on a
         # cadence, but promotion happens every pass — so a page promoted on a rank-only pass must
         # wait here to get its eager cross-check at the next cleanup, or it slips through the
@@ -199,6 +207,8 @@ class Compiler:
             if self._call_budget > 0:  # got through the whole set within budget → window done
                 self._dirty_genes.clear()
             self._call_budget = None
+            if self.summariser is not None:  # consolidate one fragmented cluster (spec §50)
+                self._summarise()
         self.last_report = CompileReport(
             inserted=self._inserted_since_pass,
             merged=merged,
@@ -288,6 +298,51 @@ class Compiler:
         return queued
 
     # -- the maintenance steps ---------------------------------------------------------------
+
+    def _summarise(self) -> int:
+        """Consolidate ONE fragmented cluster of promoted pages into a single dense page (spec
+        §50). A cluster = the pages sharing a specific tag, when that count is in
+        [summarise_min, summarise_max] — big enough to be worth merging (retrieval was diluted
+        across them), small enough not to swallow a whole broad topic. The deep model writes one
+        rich summary; the cluster's pages retire into it (the raw record still holds the detail).
+        One per cleanup pass — bounded, and it's a deep call. Returns 1 if it consolidated.
+        """
+        # count promoted pages per tag; pick the tightest cluster in range (fewest pages ≥ min)
+        by_tag: dict[str, list[str]] = {}
+        for gene, page in self.store.clean.items():
+            for t in page.tags:
+                by_tag.setdefault(t, []).append(gene)
+        candidates = [
+            (t, genes) for t, genes in by_tag.items()
+            if self.summarise_min <= len(genes) <= self.summarise_max
+        ]
+        if not candidates:
+            return 0
+        tag, genes = min(candidates, key=lambda tg: len(tg[1]))  # tightest qualifying cluster
+
+        pages = [self.store.clean[g] for g in genes]
+        facts = [p.gist or p.content for p in pages]
+        summary = self.summariser.summarise(tag, facts)
+        # the consolidated page keeps every source tag (so it retrieves for any of them) and a
+        # gene under the shared tag; the fragments' pools and pages retire into it
+        tags = tuple(dict.fromkeys(t for p in pages for t in p.tags))
+        texts = tuple(dict.fromkeys(x for p in pages for x in p.provenance.source_texts))
+        new_gene = self._fresh_gene(f"user.{re.sub(r'[^a-z0-9]+', '_', tag.lower())}")
+        for g in genes:  # retire the fragments
+            self.store.clean.pop(g, None)
+            self.store.pool.pop(g, None)
+        self.store.pool[new_gene] = [
+            Candidate(
+                gene=new_gene, content=summary, gist=tag, tags=tags,
+                provenance=replace(pages[0].provenance, source_texts=texts),
+            )
+        ]
+        self.store.clean[new_gene] = Page(
+            gene=new_gene, content=summary, provenance=self.store.pool[new_gene][0].provenance,
+            tags=tags, gist=tag,
+            rank_history=[{"at": time.time(), "event": f"summarised {len(genes)} pages"}],
+        )
+        return 1
 
     def _bubble(self, gene: str, pool: list[Candidate]) -> int:
         """One ranking pass (spec §49): compare each ADJACENT pair once and bubble the better one

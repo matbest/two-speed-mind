@@ -46,6 +46,14 @@ class SlowModel(Protocol):
         """Compile raw conversation turns into candidate facts."""
         ...
 
+    def summarise(self, topic: str, facts: list[str]) -> str:
+        """Distil several related facts about `topic` into ONE rich, self-contained sentence
+        (spec §50). Used by grooming to consolidate a fragmented cluster (many narrow genes about
+        one aspect of the user) into a single dense page, so retrieval isn't diluted. Optional:
+        the compiler only summarises when a model providing this is wired in.
+        """
+        ...
+
 
 class FastModel(Protocol):
     def answer(self, question: str, pages: list[Page], buffer: list[Turn]) -> str:

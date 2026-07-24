@@ -195,3 +195,9 @@ class ClaudeCLISlowModel:
             except ValueError:
                 continue
         return candidates_from_items(items, users)
+
+    def summarise(self, topic: str, facts: list[str]) -> str:
+        from .cloud import SUMMARISE_SYSTEM, summarise_user
+
+        return _ask(SUMMARISE_SYSTEM, summarise_user(topic, facts),
+                    model=self.model, meter=self.meter, purpose="summarise").strip()

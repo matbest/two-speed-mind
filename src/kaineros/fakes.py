@@ -68,6 +68,10 @@ class FakeSlowModel:
             )
         return out
 
+    def summarise(self, topic: str, facts: list[str]) -> str:
+        """Deterministic: join the facts, so tests can assert consolidation without a real model."""
+        return f"{topic}: " + "; ".join(facts)
+
 
 class FakeFastModel:
     """Phrases a fixed template from the pages, so tests can prove that `why` is grounded

@@ -297,6 +297,12 @@ class OpenRouterSlowModel:
                 continue
         return candidates_from_items(items, users)
 
+    def summarise(self, topic: str, facts: list[str]) -> str:
+        from .cloud import SUMMARISE_SYSTEM, summarise_user
+
+        return _chat(self.model, SUMMARISE_SYSTEM, summarise_user(topic, facts),
+                     max_tokens=400, meter=self.meter, brain="deep", purpose="summarise").strip()
+
 
 class OpenRouterFastModel:
     """The fast-role phraser — words only, on the cheap quick model."""
