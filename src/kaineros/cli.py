@@ -839,7 +839,11 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     session.wipe()
     d0, f0 = session.deep_meter.total, session.fast_meter.total
     run_start = time.time()  # wall-clock for the whole run (it's subprocess-latency bound)
+    from . import version as _kaineros_version
+
+    build = _kaineros_version()
     n_turns = sum(len(s) for s in sl.sessions)
+    print(f"  kaineros {build}")
     print(f"  {sl.name}: {len(sl.sessions)} session(s), {n_turns} turn(s), {len(sl.probes)} probe(s)")
 
     def drain() -> None:  # background worker: wait visibly, with stall detection (as /metrics)
@@ -952,11 +956,21 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     score = f"{right}/{len(rows)} = {right / len(rows):.2f}" if rows else "no probes"
     print(f"  cost {dtok:,} deep + {ftok:,} fast tok")
     print(f"  time {mins}  ({calls} deep calls{per} - wall-clock is bound by sequential claude -p)")
+    print(f"  build kaineros {build}")
     out = Path(__file__).resolve().parents[2] / "bench-results"
     out.mkdir(exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     path = out / f"{sl.name}-{stamp}.jsonl"
+    def _mname(brain) -> str:
+        m = getattr(brain, "model", None)
+        return m.split("/")[-1] if isinstance(m, str) and m else "fakes"
+
     with open(path, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"_meta": {
+            "build": build, "score": score, "think": think,
+            "route_k": session.runtime.route_k,
+            "fast": _mname(getattr(session.runtime, "model", None)),
+            "deep": _mname(session.slow)}}) + "\n")
         for r in rows:
             f.write(json.dumps(r) + "\n")
     print(f"  rows -> {path}")
