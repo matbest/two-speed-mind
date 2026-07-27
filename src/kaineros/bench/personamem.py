@@ -454,10 +454,14 @@ def run_slice(
             break
     t_groom = time.time() - t0
 
-    # PHASE 3 — PROBE (against the groomed mind)
+    # PHASE 3 — PROBE (against the groomed mind). Show a RUNNING score so you can watch the trend
+    # live and bail early on a clear regression — the probe phase is cheap (fast brain), the ingest
+    # is the slow part, so `ingest=cached` + this running line is your fast iteration loop.
     t0 = time.time()
     for probe in sl.probes:
-        say(f"{pct()} probe: {probe.question[:60]}")
+        good = sum(1 for r in rows if r["correct"])
+        run = f"  [running {good}/{len(rows)} = {good / len(rows):.2f}]" if rows else ""
+        say(f"{pct()} probe: {probe.question[:54]}{run}")
         d0, f0 = session.deep_meter.total, session.fast_meter.total
         pt0 = time.time()
         resp = session.runtime.respond(probe.text, [])  # empty buffer: memory, not context

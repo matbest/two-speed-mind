@@ -408,6 +408,16 @@ The contract (name these tests):
   Response)`; concatenated tokens equal `Response.answer`.
 - **test_search_stays_grounded_and_abstains** — the answer is phrased only from pages read; if nothing
   read clears the confidence floor it abstains (`abstained=True`), same as one-shot (spec §6).
+- **test_search_can_open_a_raw_snippet_when_facts_dont_answer** — when no compiled page settles the
+  question, a hop opens a RELEVANT raw conversation snippet (primary-source log, §46) and answers from
+  it; the `reading` event marks it as a raw snippet. This is the v2 fix: compiled facts drop the
+  implicit signal, so the search must reach the raw dialogue — on demand (a few hundred tokens), never
+  by prefilling the whole history. Fact pages for explicit questions, raw snippets for implicit ones.
+
+Motivation (measured 2026-07-27): on PersonaMem-v2's implicit-preference task, Haiku+compiled-memory
+scored 0.41 vs Haiku+raw-history 0.50 — the memory LOST the implicit signal — but raw-history cost
+~28s/answer (prefills all 32k), unusable for a responsive assistant. Raw-snippet search is how we get
+raw-context accuracy at compiled-memory latency. See the `personamem-tuning` note.
 
 Then the desktop app (`app/`) consumes the stream: each `reading` event flicks the face's gaze to the
 next scan direction (up-left → up-right → …) and appends the opened file to a debug panel below the

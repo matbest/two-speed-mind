@@ -446,4 +446,16 @@ This prototype proves the *architecture* — with the model faked — as a comma
     a terse gate. The grounding principle is unchanged throughout: the search is over real state; the
     model chooses where to look and phrases the result, it never decides what's true.
 
+    **The search reaches RAW snippets too, not only compiled pages** — this is what the PersonaMem-v2
+    result demands (2026-07-27): compiled facts distil away the signal *implicit* questions need, so a
+    small model reading the compiled wiki (0.41) LOST to the same model reading the raw history
+    (0.50) on v2's implicit-preference task — but the raw-history read cost ~28s/answer (it prefilled
+    all 32k), failing the responsiveness KPI entirely. The synthesis: the wiki must be searchable over
+    BOTH the compiled fact pages AND the raw conversation (the primary-source log, §46). When the
+    compiled gists don't settle an implicit question, a hop opens the RELEVANT raw snippet(s) —
+    retrieving a few hundred tokens on demand, not prefilling the whole history — recovering the
+    implicit signal at the compiled memory's speed. Fact pages answer the explicit; raw snippets catch
+    the implicit; the search picks whichever the question needs. That's how you get raw-context
+    *accuracy* at compiled-memory *latency* — the whole point of the two-speed bet.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.
