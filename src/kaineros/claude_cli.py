@@ -83,8 +83,11 @@ def _ask(system: str, user: str, model: str = DEEP_MODEL, meter=None, purpose: s
                 "--system-prompt", system,
                 "--tools", "",  # a comparator needs no tools - and mustn't wander off to use any
                 "--no-session-persistence",
-                user,
             ],
+            # the prompt goes on STDIN, not argv: a big prompt (e.g. a full conversation history for
+            # the baseline) overflows the Windows command-line length limit as an argument
+            # (FileNotFoundError WinError 206). `claude -p` with no positional prompt reads stdin.
+            input=user,
             capture_output=True,
             text=True,
             encoding="utf-8",
