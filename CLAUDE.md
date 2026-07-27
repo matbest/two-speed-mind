@@ -63,5 +63,7 @@ kainome = the clean layer the fast model reads (the evolving knowledge genome) �
 own vocabulary (the words a QUESTION would use), minted at extraction, routing retrieval and
 scoping the conflicts sweep — hints, never verdicts (spec §44-45) · gist = the bare answer the
 gene resolves to (gene=question, gist=value → a triple the fast brain reads without parsing a
-sentence; spec §48).
+sentence; spec §48) · arc = a promoted narrative page capturing how ONE thread of the user evolved
+(initially X → now Y, because Z) — the deep brain's consolidated "story", built additively beside
+the facts, never replacing them; grounded, never confabulated (spec §51).
 Provenance/confidence/stakes travel on every fact.

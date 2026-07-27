@@ -388,4 +388,33 @@ This prototype proves the *architecture* — with the model faked — as a comma
     pages: better retrieval, cheaper grooming, and the consolidated page *is* the evolution the
     harder probes ask for.
 
+**Arc synthesis: the deep brain dreams the story (§51)**
+51. The extractor captures *facts* but never *stories*, and the memory keeps only the latest value
+    of each gene. So the questions that ask for a **narrative** — "why did you change your mind
+    about X?", "how did your view of Y evolve?" — have no page to answer them: the arc is scattered
+    across a dozen atomic facts with no ordering or causal glue. Measured on PersonaMem (5 personas,
+    build 0.113): a frontier model reading the *raw history* answers these at 0.93 / 1.00
+    (reason-behind-update / preference-evolution) because it reconstructs the arc live from the full
+    context; Kaineros, reading its flattened facts, scores 0.64 / 0.50. That gap is the whole gap.
+    So grooming gains an **arc** step — the deep brain's version of memory consolidation, the story
+    it dreams while it sleeps: it takes a *thread* of the user's life that has temporal structure (a
+    `supersedes` chain on one gene, or a same-tag cluster whose facts span several time points) and
+    distils it into ONE dense **arc page** — gist `"initially X → now Y, because Z"`, content the
+    ordered beats and their stated reasons, tags the vocabulary a *why/how-did-it-change* question
+    uses. Then the fast brain retrieves a pre-built story instead of reassembling scraps, and the
+    expensive narrative reasoning is paid **once, offline** — not on every query the way raw context
+    re-derives it. Two rules make it safe and distinct:
+    - **Additive, not destructive** — unlike summarise (§50, which merged *distinct* facts by shared
+      topic, flattened 89 pages to 7, and is now off), an arc is layered *on top*: the atomic facts
+      stay (recall still needs them), and the arc is an extra index into them. `kind="arc"` marks
+      the page so recall routing can prefer facts and narrative routing can prefer arcs.
+    - **Grounded, never confabulated** (the one principle) — the arc is synthesised only from facts
+      and source turns that exist in the store; its provenance links every beat back to a real turn;
+      the deep model orders the facts and connects them with the causal glue the user *actually
+      stated*. If no reason was ever given, the arc says the preference *changed* — it does not
+      invent a motive. An optional adversarial verify pass checks each "because" against the sources
+      before the arc is promoted. Off by default (`arc_enabled`) until measured on the real bench,
+      like summarise before it. And **many small arcs, not one life-story** — one focused arc per
+      evolving thread, each cued in the index, so the router finds the relevant one.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.

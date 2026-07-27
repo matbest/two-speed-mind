@@ -309,6 +309,48 @@ comparison runs on the JSON layers (pool + pages), never on the rendered wiki �
 a pure `persist._render_wiki` change with zero effect on the engine or its cost. Pick the target
 representation, then it's a rendering task.
 
+**T23. Arc synthesis — the deep brain dreams the story (spec §51)**  ·  `tests/test_arcs.py` (you add)
+
+Why: the single-model baseline proved where a compiled memory loses to raw context — the
+*narrative* question types. On PersonaMem (5 personas), Opus reading the raw history scores
+reason-behind-update **0.93** and preference-evolution **1.00**; Kaineros, reading flat latest-value
+facts, scores **0.64 / 0.50**. That's the whole gap to close, and grooming (T21) now settles in ~2
+passes with time to spare (the convergence fix) — idle capacity this fills. This is the corrected,
+*additive* successor to the destructive summarise (§50/T15, now off).
+
+The interface: `SlowModel` gains `arc(thread) -> {gist, content, reasons}` — a deep call that
+distils an ordered thread of facts into one narrative. The **fake** implements it deterministically
+(joins the facts in time order, echoes only reasons present in the input — never invents one) so the
+whole thing builds and tests against fakes, real adapter last (Slice 5 rule). `Page`/`Candidate`
+gain `kind: "fact" | "arc"` (default `"fact"`). Compiler gains an `_arc()` cleanup step gated by
+`arc_enabled` (default False, like `summarise_enabled`), which finds a thread with temporal
+structure — a `supersedes` chain on a gene, or a same-tag cluster whose source turns span multiple
+times — and promotes an arc page beside (not instead of) the facts.
+
+The contract (name these tests):
+
+- **test_arc_synthesised_from_a_supersedes_chain** — a gene that was updated (an incumbent + a
+  `supersedes` candidate, or a promote history showing old→new) yields an arc page whose gist
+  captures both endpoints ("initially X → now Y"), `kind == "arc"`.
+- **test_arc_is_additive_not_destructive** — after `_arc()`, every atomic fact page that fed the arc
+  still exists (contrast `test_summarise`, where fragments retire). Recall of an individual fact is
+  unaffected.
+- **test_arc_is_grounded_no_invented_reason** — given a thread whose turns state *what* changed but
+  never *why*, the arc's content/gist contains no fabricated "because"; every `source_turn_id` on
+  the arc's provenance is one that really fed it. (Fake `arc` that tried to invent a reason would
+  fail this — the guard, not the model, enforces it.)
+- **test_arc_routes_for_a_why_question** — a narrative probe ("why did you switch from X to Y?")
+  retrieves the arc page (its narrative tags match), not just the scattered fact pages.
+- **test_arc_is_rebuilt_when_the_thread_gains_a_new_fact** — a new fact on an arced thread marks the
+  arc dirty (via the §47 dirty-set) and re-synthesis updates it; a stale arc never outlives its
+  facts.
+
+Then measure on the real bench: `/bench 4 personas=5 ingest=cached arc=on` (a new bench flag flips
+`arc_enabled`, like `summarise=on`) — the target is lifting reason-behind-update and
+preference-evolution toward the raw-context baseline while the additive rule keeps plain recall flat.
+Optional follow-up: an adversarial verify pass (a second deep call that must confirm each "because"
+against the sources before promotion).
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'
