@@ -326,23 +326,27 @@ def run_slice(
             say(f"{pct()} ingest checkpoint saved — rerun with `ingest=cached` to skip extraction")
 
     # PHASE 2 — GROOM: the deep brain THINKS for a wall-clock budget, running cleanup passes until
-    # the time is up OR the mind converges (no new judging AND no consolidation).
+    # the time is up OR the mind SETTLES. Settled = two passes that CHANGED nothing (no fusion,
+    # curation, promotion, or consolidation). We converge on changes, not on judge-CHECKS: a
+    # random-pair background sweep keeps sampling new pairs every pass, so a check-count never hits
+    # zero on a settled mind — the old convergence spun the full budget for no effect.
     say(f"{pct()} deep brain thinking (grooming) for up to {think_seconds:.0f}s...")
     t0 = time.time()
     deadline = t0 + think_seconds
     gp = 0
+    idle = 0  # consecutive passes with zero changes
     while time.time() < deadline:
         before = sum(counting.counts.values())
-        pages_before = len(session.store.pages())
         session.compiler.housekeep(cleanup=True)
         gp += 1
-        new = sum(counting.counts.values()) - before
-        consolidated = pages_before - len(session.store.pages())
+        changes = session.compiler.last_report.actions  # mutations to the clean layer this pass
+        new = sum(counting.counts.values()) - before     # judge calls (progress only)
         left = max(0, int(deadline - time.time()))
-        say(f"{pct()} ...thought {gp} pass(es), {new} checks, {consolidated} consolidated, "
+        say(f"{pct()} ...thought {gp} pass(es), {new} checks, {changes} changes, "
             f"{left}s left, {len(session.store.pages())} pages")
-        if new == 0 and consolidated == 0:
-            say(f"{pct()} deep brain settled (converged after {gp} pass(es))")
+        idle = idle + 1 if changes == 0 else 0
+        if idle >= 2:  # nothing changed for two passes running -> settled, stop wasting the budget
+            say(f"{pct()} deep brain settled (no changes for {idle} passes, after {gp} total)")
             break
     t_groom = time.time() - t0
 

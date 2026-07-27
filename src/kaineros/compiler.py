@@ -163,7 +163,7 @@ class Compiler:
 
         Returns newly promoted pages; the full tally lands in ``self.last_report``.
         """
-        merged = split = fused = queued = 0
+        merged = split = fused = queued = summarised = 0
         for gene, pool in self.store.pool.items():
             merged += self._dedup(gene, pool)  # rank: per-pool, cheap
         for gene, pool in self.store.pool.items():
@@ -228,6 +228,7 @@ class Compiler:
             fused=fused,
             promoted=len(promoted),
             queued=queued,
+            summarised=summarised,
         )
         self._inserted_since_pass = 0
         return promoted

@@ -42,6 +42,21 @@ def test_cross_page_cost_is_bounded_as_the_mind_grows():
     assert big_calls <= small_calls + small.groom_rate  # not growing with the page count
 
 
+def test_a_settled_mind_reports_zero_actions():
+    """The settled signal the groom loop stops on: a groomed, conflict-free, duplicate-free mind
+    must report actions == 0 (no fusion, curation, promotion, or consolidation) — even though the
+    stochastic sweep keeps sampling pairs. The old loop stopped on check-COUNT, which never hits
+    zero on a settled mind (fresh random pairs every pass), so it spun the whole think budget."""
+    comp = _distinct_mind(TallyJudge(), 30)  # 30 promoted pages, no conflicts, no duplicates
+    comp.housekeep(cleanup=True)
+    assert comp.last_report.actions == 0     # nothing changed -> settled, grooming should stop
+
+    # and the signal is live: a genuine change registers as actions > 0
+    comp.insert(_cand("newfact", "a brand new unrelated fact", ("fresh",)))
+    comp.housekeep(cleanup=True)
+    assert comp.last_report.actions > 0      # the new page was promoted -> not settled
+
+
 def test_fresh_conflict_is_caught_eagerly():
     # the SECOND page of a conflicting pair, promoted into a big mind, is checked at once
     judge = TallyJudge(conflict_pred=lambda a, b: "berlin" in a.content and "munich" in b.content
