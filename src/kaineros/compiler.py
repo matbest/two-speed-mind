@@ -200,6 +200,11 @@ class Compiler:
             # mind can't fire hundreds of subprocess calls at once. Fusion first (answer-critical
             # merges get the budget), then conflict curation. Overflow keeps the dirty set for the
             # next cleanup, where the already-checked pairs are free (cache) and only new ones cost.
+            # SUMMARISE FIRST (spec §50): consolidate fragmented clusters into dense pages BEFORE
+            # the cross-page sweep — it shrinks the mind, so the O(pages²) fusion then runs on far
+            # fewer pages. Consolidating all qualifying clusters in one pass (not one-per-pass)
+            # means a fragmented mind actually collapses within the think budget.
+            summarised = self._summarise() if self.summariser is not None else 0
             self._call_budget = self.max_cleanup_calls
             pairs = self._pairs_to_check([g for g in self._dirty_genes if g in self.store.clean])
             fused = self._fusion(pairs)
@@ -207,8 +212,6 @@ class Compiler:
             if self._call_budget > 0:  # got through the whole set within budget → window done
                 self._dirty_genes.clear()
             self._call_budget = None
-            if self.summariser is not None:  # consolidate one fragmented cluster (spec §50)
-                self._summarise()
         self.last_report = CompileReport(
             inserted=self._inserted_since_pass,
             merged=merged,
@@ -299,7 +302,16 @@ class Compiler:
 
     # -- the maintenance steps ---------------------------------------------------------------
 
-    def _summarise(self) -> int:
+    def _summarise(self, cap: int = 40) -> int:
+        """Consolidate every qualifying cluster this pass (up to `cap`, a runaway guard), so a
+        fragmented mind collapses in one grooming pass instead of one-cluster-per-pass. Returns
+        the number consolidated."""
+        n = 0
+        while n < cap and self._summarise_one():
+            n += 1
+        return n
+
+    def _summarise_one(self) -> int:
         """Consolidate ONE fragmented cluster of promoted pages into a single dense page (spec
         §50). A cluster = the pages sharing a specific tag, when that count is in
         [summarise_min, summarise_max] — big enough to be worth merging (retrieval was diluted

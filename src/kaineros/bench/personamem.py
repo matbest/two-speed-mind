@@ -310,13 +310,17 @@ def run_slice(
         gp = 0
         while time.time() < deadline:
             before = sum(counting.counts.values())
+            pages_before = len(session.store.pages())
             session.compiler.housekeep(cleanup=True)
             gp += 1
             new = sum(counting.counts.values()) - before
+            consolidated = pages_before - len(session.store.pages())  # summarise shrank the mind
             left = max(0, int(deadline - time.time()))
-            say(f"{pct()} ...thought {gp} pass(es), {new} new checks, {left}s left, "
-                f"{len(session.store.pages())} pages")
-            if new == 0:  # nothing left to compare — the mind has settled
+            say(f"{pct()} ...thought {gp} pass(es), {new} checks, {consolidated} consolidated, "
+                f"{left}s left, {len(session.store.pages())} pages")
+            # settled only when NOTHING changed — no new judging AND no consolidation (summarise
+            # doesn't make judge calls, so without the page check the loop would quit too early)
+            if new == 0 and consolidated == 0:
                 say(f"{pct()} deep brain settled (converged after {gp} pass(es))")
                 break
         for probe in by_pos[i]:
