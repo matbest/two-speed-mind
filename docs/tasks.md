@@ -377,6 +377,44 @@ questions prefer `kind="arc"` (the direct fix for the saturation; §51 calls for
 them equally today); (b) far tighter arc gating (few high-quality arcs). Paused: chasing ±2 questions
 on n=49 isn't worth it; arcs stay off, code + tests remain.
 
+**T24. Step-by-step wiki search + streamed search/answer (spec §52)**  ·  `tests/test_search.py` (you add)
+
+Why: the project's actual KPI (a small LOCAL model, ~20 tok/s, that feels responsive — see the
+`project-goal-latency` note) isn't served by one-shot retrieval. The fast brain should SEARCH the
+wiki step by step, and the search + answer should STREAM so the desktop face can flick its gaze per
+read and speak the answer as it generates. Bounded by a hop cap so it stays inside the "assistant is
+thinking" latency window.
+
+The interface: `Runtime.respond` gains a streaming form (a generator, or `respond(..., stream=cb)`)
+that yields `SearchEvent`s — `("reading", {hop, gene})` as each page is opened, then `("token", str)`
+for the answer, then `("done", Response)`. The existing non-streaming `respond` stays (collect the
+stream into a `Response`), so nothing else breaks. The loop: read the index → open the most relevant
+page → decide *enough / keep looking* → repeat up to `max_hops` → phrase from the pages read. Build
+and test on the FAKES: a `FakeFastModel` search variant that picks the top keyword-overlap page each
+hop and stops when a page matches, so hops are deterministic. Latency levers per §52: one page per
+hop (bounded context), reuse the cached system+index prefix, `max_hops` small (default ~3).
+
+The contract (name these tests):
+
+- **test_search_reads_the_index_then_opens_a_page** — the loop consults the index and opens ≥1 page
+  before answering; `why`/`used` reflect the pages actually read, in order.
+- **test_search_emits_a_reading_event_per_hop** — every page opened yields a `("reading", {hop,gene})`
+  event, in open order, before the answer tokens — the app's gaze-flick + debug-trace feed.
+- **test_search_respects_the_hop_cap** — with `max_hops=2`, at most 2 pages are opened even when more
+  are relevant (the latency guarantee).
+- **test_search_stops_early_when_confident** — if the first page answers it, it doesn't burn all hops
+  (an "enough?" gate stops the loop) — so easy questions stay fast.
+- **test_search_streams_answer_tokens** — the answer arrives as `("token", …)` events then `("done",
+  Response)`; concatenated tokens equal `Response.answer`.
+- **test_search_stays_grounded_and_abstains** — the answer is phrased only from pages read; if nothing
+  read clears the confidence floor it abstains (`abstained=True`), same as one-shot (spec §6).
+
+Then the desktop app (`app/`) consumes the stream: each `reading` event flicks the face's gaze to the
+next scan direction (up-left → up-right → …) and appends the opened file to a debug panel below the
+chat; the `token` stream fills the chat bubble progressively and drives sentence-wise TTS lip-sync.
+Later: measure real TTFT + tokens/sec once a local model is wired, and tune `max_hops` against the
+latency budget (the accuracy-vs-hops curve is the number that matters, not the frontier gap).
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

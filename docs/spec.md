@@ -417,4 +417,33 @@ This prototype proves the *architecture* — with the model faked — as a comma
       like summarise before it. And **many small arcs, not one life-story** — one focused arc per
       evolving thread, each cued in the index, so the router finds the relevant one.
 
+**Step-by-step wiki search; stream the search AND the answer (§52)**
+52. `Runtime.respond` today is ONE-SHOT: keyword-match the top `route_k` pages, phrase, done. The
+    project's real target (a small LOCAL model, ~20 tok/s, that feels responsive) wants the fast
+    brain to **search the wiki step by step** like a person browsing: read the index (the cue lines
+    — gene + tags per page), open the most relevant page, decide *enough, or look further?*, follow
+    on until it can answer — bounded by a **hop cap** (`max_hops`, the latency knob) and TERSE
+    per-hop decisions. It stays grounded exactly as before: the answer is phrased from the pages
+    actually read, and `why` is those pages in the order they were opened; it abstains when nothing
+    read clears the floor. More hops = better recall on hard questions but more seconds — the sweet
+    spot is ~2–3 hops, and each hop reads ONE page (context stays bounded, the cached system+index
+    prefix is reused), so time-to-first-token stays small even on a slow local model.
+
+    The search emits **two streams**, so the loop is watchable and the answer feels alive:
+    - a **`reading` event per hop** — `{hop, gene}` as each page is opened. The app turns this into
+      character: the face **flicks its gaze to a new "shelf"** (up-left, then up-right, alternating)
+      on each read, and the opened file is logged to a **debug trace** below the chat. This makes
+      the invisible search visible — the difference between "it's thinking about my question" and
+      "it froze".
+    - an **answer token stream** — the final answer decodes token-by-token, streamed to the head so
+      it **speaks as it generates** (sentence-wise TTS lip-sync) and fills the chat progressively.
+
+    So `respond` becomes a streaming API — a generator yielding `SearchEvent`s (`reading` / `token`
+    / `done` with the final `Response`). The CLI consumes it by printing; the desktop app consumes
+    it to flick the gaze, append the debug line, stream the chat bubble, and drive the jaw. A
+    deterministic keyword pass may still PROPOSE candidate pages each hop (cheap, no call) with the
+    model only deciding *this one, or keep looking?* — a hybrid that keeps the per-hop model cost to
+    a terse gate. The grounding principle is unchanged throughout: the search is over real state; the
+    model chooses where to look and phrases the result, it never decides what's true.
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.
