@@ -57,6 +57,11 @@ class Compiler:
         self.summarise_enabled = False
         self.summarise_min = 4
         self.summarise_max = 10
+        # arc synthesis (spec §51): the deep model narrates an evolving thread (a supersedes chain)
+        # into ONE arc page beside the facts, so the narrative questions have a page to answer them.
+        # Off by default until measured (like summarise); `self.arc_model` provides `.arc()`.
+        self.arc_model = None
+        self.arc_enabled = False
         # genes changed (promoted/re-promoted) since the last CLEANUP pass. Cleanup runs on a
         # cadence, but promotion happens every pass — so a page promoted on a rank-only pass must
         # wait here to get its eager cross-check at the next cleanup, or it slips through the
@@ -163,7 +168,7 @@ class Compiler:
 
         Returns newly promoted pages; the full tally lands in ``self.last_report``.
         """
-        merged = split = fused = queued = summarised = 0
+        merged = split = fused = queued = summarised = arced = 0
         for gene, pool in self.store.pool.items():
             merged += self._dedup(gene, pool)  # rank: per-pool, cheap
         for gene, pool in self.store.pool.items():
@@ -195,6 +200,7 @@ class Compiler:
                     rank_history=history + [{"at": time.time(), "event": "promoted"}],
                     tags=top.tags,  # the winning allele's vocabulary serves the page (spec §44)
                     gist=top.gist,  # ...and its bare answer (spec §48)
+                    kind=top.kind,  # facts stay facts, arcs stay arcs (spec §51) across re-promotion
                 )
                 self.store.clean[gene] = new_page
                 promoted.append(new_page)
@@ -214,6 +220,14 @@ class Compiler:
                 if (self.summariser is not None and self.summarise_enabled)
                 else 0
             )
+            # arc synthesis (spec §51): narrate evolving threads into arc pages, BESIDE the facts.
+            # Idempotent — rebuilds only a thread whose source turns changed — so a settled mind
+            # produces no arc actions and grooming still converges.
+            arced = (
+                self._arc()
+                if (self.arc_model is not None and self.arc_enabled)
+                else 0
+            )
             self._call_budget = self.max_cleanup_calls
             pairs = self._pairs_to_check([g for g in self._dirty_genes if g in self.store.clean])
             fused = self._fusion(pairs)
@@ -229,6 +243,7 @@ class Compiler:
             promoted=len(promoted),
             queued=queued,
             summarised=summarised,
+            arced=arced,
         )
         self._inserted_since_pass = 0
         return promoted
@@ -365,6 +380,60 @@ class Compiler:
             rank_history=[{"at": time.time(), "event": f"summarised {len(genes)} pages"}],
         )
         return 1
+
+    def _arc(self) -> int:
+        """Narrate each EVOLVING thread into one arc page beside the facts (spec §51). A thread is a
+        fact gene whose pool holds an update chain — a deliberate `supersedes` allele over ≥1 older
+        one — i.e. a preference that CHANGED, which is exactly what the narrative probes ask about.
+
+        The model only phrases (an `ArcDraft` of gist + beats); the CODE grounds it: it keeps only
+        beats traceable to a real source fact (so an invented "because" is dropped, never the
+        model's word for it), and builds the arc's provenance from the facts themselves. Idempotent
+        — an arc whose source turns already match the thread is left alone, so a settled mind makes
+        no arc changes and grooming converges. Returns the number built/rebuilt this pass.
+        """
+        from .runtime import _tokens  # the routing tokeniser — grounds beats the same way retrieval
+
+        built = 0
+        for gene in list(self.store.pool):
+            page = self.store.clean.get(gene)
+            if page is None or page.kind == "arc":
+                continue  # only a promoted FACT seeds an arc — never an arc of an arc
+            chain = self.store.pool.get(gene, [])
+            # the evolving-thread signal: >1 allele and the promoted top is a deliberate update
+            if len(chain) < 2 or not any(c.provenance.supersedes for c in chain):
+                continue
+            ordered = sorted(chain, key=lambda c: c.provenance.created_at)  # oldest → newest
+            arc_gene = f"{gene}.arc"
+            turn_ids = tuple(t for c in ordered for t in c.provenance.source_turn_ids)
+            existing = self.store.clean.get(arc_gene)
+            if existing is not None and set(existing.provenance.source_turn_ids) == set(turn_ids):
+                continue  # already reflects this thread → nothing to do (keeps grooming settled)
+
+            draft = self.arc_model.arc([c.content for c in ordered])
+            fact_tokens: set[str] = set()
+            for c in ordered:
+                fact_tokens |= _tokens(c.content)
+            grounded = [b for b in draft.beats if _tokens(b) & fact_tokens]  # drop the ungrounded
+            content = " ; ".join(grounded)
+            tags = tuple(dict.fromkeys(t for c in ordered for t in c.tags))
+            prov = replace(
+                ordered[0].provenance,
+                source_turn_ids=turn_ids,
+                source_texts=tuple(x for c in ordered for x in c.provenance.source_texts),
+                created_at=ordered[0].provenance.created_at,
+            )
+            self.store.pool[arc_gene] = [
+                Candidate(gene=arc_gene, content=content, gist=draft.gist, tags=tags,
+                          provenance=prov, kind="arc")
+            ]
+            self.store.clean[arc_gene] = Page(
+                gene=arc_gene, content=content, provenance=prov, tags=tags, gist=draft.gist,
+                kind="arc",
+                rank_history=[{"at": time.time(), "event": f"arc of {len(ordered)} beats"}],
+            )
+            built += 1
+        return built
 
     def _bubble(self, gene: str, pool: list[Candidate]) -> int:
         """One ranking pass (spec §49): compare each ADJACENT pair once and bubble the better one

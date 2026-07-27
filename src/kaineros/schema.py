@@ -133,6 +133,7 @@ class CompileReport:
     promoted: int = 0                   # pages promoted this pass
     queued: int = 0                     # disambiguation questions queued this pass (Slice 9)
     summarised: int = 0                 # fragmented clusters consolidated this pass (spec §50)
+    arced: int = 0                      # evolving threads narrated into arc pages this pass (spec §51)
     backlog: int = 0                    # turns awaiting compilation (set by the session)
     error: str | None = None            # a failed background pass reports here (spec §26)
 
@@ -141,7 +142,8 @@ class CompileReport:
         """Mutations that CHANGED the clean layer this pass — the settled signal. Grooming should
         stop when this hits zero, not when it stops *checking* (a random-pair sweep keeps checking
         forever on a settled mind, so a check-count convergence never fires)."""
-        return self.merged + self.split + self.fused + self.promoted + self.queued + self.summarised
+        return (self.merged + self.split + self.fused + self.promoted
+                + self.queued + self.summarised + self.arced)
 
 
 @dataclass
