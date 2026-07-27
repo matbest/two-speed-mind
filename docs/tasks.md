@@ -366,6 +366,17 @@ frontier, position on local-first/private/human-readable, don't claim invention)
   in the pool). Also: sleep-time compute (Letta) is the same offline-consolidation move by another
   name — the metaphor is established, not ours.
 
+**T23 RESULT (2026-07-27): built & measured, net NEGATIVE — OFF by default, tuning paused.**
+Two `arc=on` runs on the 5-persona / 49-Q cached bench. v1 (supersedes chains only) built 3 arcs
+(chains never form — genes≈pages), 0.61→0.59. v2 (+ same-tag clusters spanning time) built ~109
+arcs (~25% of pages) and SATURATED retrieval — every probe read an arc, crowding facts out of
+route_k=3: reason-behind-update +1 (9→10), evolution flat, but recall 9→8 and recommendations 4→2,
+so 0.61→0.57. The clutter cost beats the narrative gain on this sample. Two spec'd-but-UNBUILT levers
+if ever revisited: (a) **kind-aware retrieval** — recall prefers `kind="fact"`, only why/how-changed
+questions prefer `kind="arc"` (the direct fix for the saturation; §51 calls for it, runtime treats
+them equally today); (b) far tighter arc gating (few high-quality arcs). Paused: chasing ±2 questions
+on n=49 isn't worth it; arcs stay off, code + tests remain.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'
