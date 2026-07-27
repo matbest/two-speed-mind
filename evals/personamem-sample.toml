@@ -1,7 +1,12 @@
-# A hand-made PersonaMem-shaped fixture: multi-session persona turns + in-situ multiple-choice
-# probes. Small enough to run offline on the fakes (tests) and as a smoke slice (/bench).
-# Shapes mirror the real benchmark: recall, evolving preference, and an unanswerable probe
-# (abstention - which MC scoring penalises; we report it separately).
+# A hand-made PersonaMem-shaped fixture: multi-session persona turns + multiple-choice probes.
+# Small enough to run offline on the fakes (tests) and as a smoke slice (/bench).
+# Shapes mirror the real benchmark: a stable preference, a stable fact, an evolving preference,
+# and an unanswerable probe (abstention - which MC scoring penalises; we report it separately).
+#
+# Every probe is answered AGAINST THE WHOLE INGESTED MIND (spec §49): ingest all sessions, let the
+# deep brain groom, then probe. This matches the real PersonaMem loader, which positions every
+# question at the last session. So a "stable" preference must genuinely never be superseded, and an
+# "evolving" one resolves to its LATEST value - the fixture is written to be coherent read that way.
 name = "personamem-sample"
 
 [[session]]
@@ -12,7 +17,7 @@ turns = [
 
 [[session]]
 turns = [
-    "Coffee upsets my stomach lately.",
+    "Window seats are what I always book to fly.",
     "Chess tournaments fill my weekends now.",
 ]
 
@@ -22,28 +27,26 @@ turns = [
 ]
 
 [[probe]]
-after_session = 0
+# a STABLE preference - stated once, never contradicted, so it survives the whole ingest
 type = "recall_preference"
-question = "Which drink should you suggest for me?"
-options = ["coffee", "green tea", "cola"]
-answer = "green tea"
+question = "Which seat should you book for me?"
+options = ["aisle", "window", "middle"]
+answer = "window"
 
 [[probe]]
-after_session = 1
 type = "recall_fact"
 question = "Which hobby fills my weekends?"
 options = ["chess", "painting", "running"]
 answer = "chess"
 
 [[probe]]
-after_session = 2
+# an EVOLVING preference: green tea -> matcha; the current go-to is what should win
 type = "preference_evolution"
 question = "Which drink is my current go-to?"
 options = ["green tea", "matcha lattes", "cola"]
 answer = "matcha lattes"
 
 [[probe]]
-after_session = 2
 type = "unanswerable"
 question = "Which breed of dog do I own?"
 options = ["beagle", "poodle", "husky"]

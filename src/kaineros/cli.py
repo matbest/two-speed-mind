@@ -837,6 +837,24 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     session.load_profile(profiles.mind_dir(target))  # a throwaway mind, never your own
     session.profile_name = target
     session.wipe()
+
+    # checkpoint the (expensive, deterministic) ingest so you can iterate on grooming fast:
+    # `ingest=cached` boots from the saved post-ingest snapshot and skips extraction entirely.
+    ckpt = str(Path(profiles.mind_dir(target)).parent / "ingest-checkpoint")
+    skip_ingest = False
+    if any(a == "ingest=cached" for a in args):
+        from .persist import load_store
+
+        if (Path(ckpt) / "pages.json").exists():
+            loaded = load_store(ckpt)
+            session.store = loaded
+            session.compiler.store = loaded
+            session.runtime.store = loaded
+            skip_ingest = True
+            print(f"  (ingest=cached: booting from saved checkpoint at {ckpt})")
+        else:
+            print("  (ingest=cached requested but no checkpoint yet - ingesting fresh + saving one)")
+
     d0, f0 = session.deep_meter.total, session.fast_meter.total
     run_start = time.time()  # wall-clock for the whole run (it's subprocess-latency bound)
     from . import version as _kaineros_version
@@ -923,7 +941,8 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
             print(f"  (retrieving top-{routek} pages per probe)")
         rows, stats = personamem.run_slice(
             session, sl, say=_say, wait_idle=drain if session.background else None,
-            think_seconds=think,
+            think_seconds=think, skip_ingest=skip_ingest,
+            checkpoint_dir=None if skip_ingest else ckpt,
         )
     except KeyboardInterrupt:
         print("\n  (bench cancelled - scoring what ran)")
@@ -955,6 +974,10 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     right = sum(r["correct"] for r in rows)
     score = f"{right}/{len(rows)} = {right / len(rows):.2f}" if rows else "no probes"
     print(f"  cost {dtok:,} deep + {ftok:,} fast tok")
+    ph = stats.get("phase_seconds") or {}
+    if ph:
+        print(f"  split ingest {ph.get('ingest', 0)}s · groom {ph.get('groom', 0)}s · "
+              f"probe {ph.get('probe', 0)}s  ({'cached ingest' if skip_ingest else 'fresh ingest'})")
     print(f"  time {mins}  ({calls} deep calls{per} - wall-clock is bound by sequential claude -p)")
     print(f"  build kaineros {build}")
     out = Path(__file__).resolve().parents[2] / "bench-results"

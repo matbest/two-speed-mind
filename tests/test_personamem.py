@@ -14,8 +14,8 @@ def test_sample_fixture_loads():
     assert len(sl.sessions) == 3
     assert len(sl.probes) == 4
     p = sl.probes[0]
-    assert p.letter == "b"  # green tea is option 2
-    assert "(a) coffee" in p.text and "(b) green tea" in p.text
+    assert p.letter == "b"  # window is option 2
+    assert "(a) aisle" in p.text and "(b) window" in p.text
 
 
 def test_big_fixture_loads_and_is_well_formed():

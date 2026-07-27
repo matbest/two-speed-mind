@@ -257,7 +257,8 @@ class _CountingJudge:
 
 
 def run_slice(
-    session, sl: Slice, say=lambda s: None, wait_idle=None, think_seconds: float = 60.0
+    session, sl: Slice, say=lambda s: None, wait_idle=None, think_seconds: float = 60.0,
+    skip_ingest: bool = False, checkpoint_dir: str | None = None
 ) -> tuple[list[dict], dict]:
     """Feed sessions, settle, probe. Returns (rows, population_stats). UI-free: `say` narrates,
     `wait_idle` drains a background worker (the CLI passes its progress-printing drain).
@@ -267,10 +268,6 @@ def run_slice(
     cleanup passes until the time is up OR the mind converges (a pass makes no new comparisons).
     This models 'how long has the deep brain had to think' — a minute for a quick run, or make it
     long to simulate an overnight think. More thinking time = a cleaner wiki = better answers."""
-    by_pos: dict[int, list[Probe]] = {}
-    for p in sl.probes:
-        by_pos.setdefault(min(p.after_session, len(sl.sessions) - 1), []).append(p)
-
     total = len(sl.sessions) + len(sl.probes)  # progress units: each session, each probe
     done = 0
 
@@ -280,79 +277,88 @@ def run_slice(
     counting = _CountingJudge(session.compiler.judge)
     session.compiler.judge = counting
     # ingest keeps the CHEAP rank+promote (bounded by new facts) but NOT the expensive cross-page
-    # cleanup — push the cadence out of reach so cleanup only happens in the explicit pre-probe
-    # groom (spec §49). This is why ingest was slowing down: every 4th session used to fire a
-    # full cross-page sweep over the whole growing mind.
+    # cleanup — push the cadence out of reach so cleanup only happens in the explicit groom phase.
     session.cleanup_every = 10**9
     inserted = 0
     rows: list[dict] = []
-    for i, turns in enumerate(sl.sessions):
-        say(f"{pct()} session {i + 1}/{len(sl.sessions)}: ingesting {len(turns)} turn(s) "
-            "(extract + rank - no cross-page grooming yet)...")
-        d0, t0 = session.deep_meter.total, time.time()
-        for text in turns:
-            session.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
-        # ingest: extract + append + cheap rank/promote, but NO cross-page cleanup (deferred to the
-        # pre-probe groom). Roughly fixed cost per session regardless of mind size (spec §49).
-        session.consolidate()
-        if wait_idle is not None:
-            wait_idle()
-        inserted += getattr(session.compiler.last_report, "inserted", 0)
-        done += 1
-        say(f"{pct()} session {i + 1} ingested in {time.time() - t0:.0f}s "
-            f"({session.deep_meter.total - d0:,} deep tok, {len(session.store.pages())} page(s))")
-        if i not in by_pos:
-            continue
-        # the deep brain THINKS (grooms) for a wall-clock budget before probing (spec §49): run
-        # cleanup passes until the time is up OR the mind converges (a pass makes no new calls).
-        say(f"{pct()} deep brain thinking (grooming) for up to {think_seconds:.0f}s...")
-        deadline = time.time() + think_seconds
-        gp = 0
-        while time.time() < deadline:
-            before = sum(counting.counts.values())
-            pages_before = len(session.store.pages())
-            session.compiler.housekeep(cleanup=True)
-            gp += 1
-            new = sum(counting.counts.values()) - before
-            consolidated = pages_before - len(session.store.pages())  # summarise shrank the mind
-            left = max(0, int(deadline - time.time()))
-            say(f"{pct()} ...thought {gp} pass(es), {new} checks, {consolidated} consolidated, "
-                f"{left}s left, {len(session.store.pages())} pages")
-            # settled only when NOTHING changed — no new judging AND no consolidation (summarise
-            # doesn't make judge calls, so without the page check the loop would quit too early)
-            if new == 0 and consolidated == 0:
-                say(f"{pct()} deep brain settled (converged after {gp} pass(es))")
-                break
-        for probe in by_pos[i]:
-            say(f"{pct()} probe: {probe.question[:60]}")
-            d0, f0 = session.deep_meter.total, session.fast_meter.total
-            t0 = time.time()
-            resp = session.runtime.respond(probe.text, [])  # empty buffer: memory, not context
+    t_ingest = t_groom = t_probe = 0.0
+
+    # PHASE 1 — INGEST (extract + append), or boot from a saved checkpoint (spec §49). Ingest is
+    # the deterministic, expensive part; checkpointing it lets you iterate on grooming fast.
+    if skip_ingest:
+        done += len(sl.sessions)
+        say(f"{pct()} booted from cached ingest — extraction skipped "
+            f"({len(session.store.pages())} pages)")
+    else:
+        t0 = time.time()
+        for i, turns in enumerate(sl.sessions):
+            say(f"{pct()} session {i + 1}/{len(sl.sessions)}: ingesting {len(turns)} turn(s)...")
+            d0 = session.deep_meter.total
+            for text in turns:
+                session.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
+            session.consolidate()  # extract + append + cheap rank/promote, no cross-page cleanup
+            if wait_idle is not None:
+                wait_idle()
+            inserted += getattr(session.compiler.last_report, "inserted", 0)
             done += 1
-            rows.append(
-                {
-                    "qid": probe.qid,
-                    "type": probe.qtype,
-                    "expected": f"({probe.letter}) {probe.answer}",
-                    "answer": resp.answer,
-                    "correct": score_answer(resp.answer, probe) and not resp.abstained,
-                    "abstained": resp.abstained,
-                    "used": [p.gene for p in resp.used],  # which pages the lookup actually read
-                    "deep_tok": session.deep_meter.total - d0,
-                    "fast_tok": session.fast_meter.total - f0,
-                    "seconds": round(time.time() - t0, 2),
-                }
-            )
+            say(f"{pct()} session {i + 1} ingested ({session.deep_meter.total - d0:,} deep tok, "
+                f"{len(session.store.pages())} pages)")
+        t_ingest = time.time() - t0
+        if checkpoint_dir is not None:
+            from ..persist import save_store
+
+            save_store(session.store, checkpoint_dir)
+            say(f"{pct()} ingest checkpoint saved — rerun with `ingest=cached` to skip extraction")
+
+    # PHASE 2 — GROOM: the deep brain THINKS for a wall-clock budget, running cleanup passes until
+    # the time is up OR the mind converges (no new judging AND no consolidation).
+    say(f"{pct()} deep brain thinking (grooming) for up to {think_seconds:.0f}s...")
+    t0 = time.time()
+    deadline = t0 + think_seconds
+    gp = 0
+    while time.time() < deadline:
+        before = sum(counting.counts.values())
+        pages_before = len(session.store.pages())
+        session.compiler.housekeep(cleanup=True)
+        gp += 1
+        new = sum(counting.counts.values()) - before
+        consolidated = pages_before - len(session.store.pages())
+        left = max(0, int(deadline - time.time()))
+        say(f"{pct()} ...thought {gp} pass(es), {new} checks, {consolidated} consolidated, "
+            f"{left}s left, {len(session.store.pages())} pages")
+        if new == 0 and consolidated == 0:
+            say(f"{pct()} deep brain settled (converged after {gp} pass(es))")
+            break
+    t_groom = time.time() - t0
+
+    # PHASE 3 — PROBE (against the groomed mind)
+    t0 = time.time()
+    for probe in sl.probes:
+        say(f"{pct()} probe: {probe.question[:60]}")
+        d0, f0 = session.deep_meter.total, session.fast_meter.total
+        pt0 = time.time()
+        resp = session.runtime.respond(probe.text, [])  # empty buffer: memory, not context
+        done += 1
+        rows.append({
+            "qid": probe.qid, "type": probe.qtype,
+            "expected": f"({probe.letter}) {probe.answer}", "answer": resp.answer,
+            "correct": score_answer(resp.answer, probe) and not resp.abstained,
+            "abstained": resp.abstained, "used": [p.gene for p in resp.used],
+            "deep_tok": session.deep_meter.total - d0, "fast_tok": session.fast_meter.total - f0,
+            "seconds": round(time.time() - pt0, 2),
+        })
+    t_probe = time.time() - t0
+
     session.compiler.judge = counting.inner  # unwrap — leave the session as we found it
     pairwise = sum(counting.counts.values())
-    candidates = sum(len(p) for p in session.store.pool.values())
     stats = {
         "genes": len(session.store.pool),
-        "candidates": candidates,
+        "candidates": sum(len(p) for p in session.store.pool.values()),
         "pages": len(session.store.pages()),
         "inserted": inserted,
         "judge_calls": dict(counting.counts, total=pairwise),
         "rank_per_element": round(pairwise / inserted, 1) if inserted else None,
+        "phase_seconds": {"ingest": round(t_ingest), "groom": round(t_groom), "probe": round(t_probe)},
     }
     return rows, stats
 
