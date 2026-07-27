@@ -871,6 +871,59 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         print("  (summarise mode ON - consolidating same-tag clusters)")
     want_cached = any(a == "ingest=cached" for a in args)
 
+    # baseline mode: skip the two-speed pipeline and measure ONE frontier model reading the RAW
+    # history per question (no compiled memory) — the apples-to-apples comparison point. Touches no
+    # profile (needs no mind). `baseline` = Opus 4.8 on the subscription; `baseline=<model>` picks one.
+    if any(a == "baseline" or a.startswith("baseline=") for a in args):
+        from .claude_cli import _ask
+        from .claude_cli import preflight as cli_preflight
+
+        bmodel = next((a.split("=", 1)[1] for a in args if a.startswith("baseline=")), "opus")
+        print(f"  baseline: {bmodel} (Claude subscription) reads the full raw history per "
+              f"question - no compiled memory, no retrieval")
+        try:
+            cli_preflight(bmodel)
+        except Exception as exc:  # noqa: BLE001 - surface the CLI/login problem and bail cleanly
+            print(f"  baseline needs the `claude` CLI logged in: {exc}")
+            return
+
+        def _ask_baseline(system: str, user: str) -> str:
+            return _ask(system, user, model=bmodel, meter=session.deep_meter, purpose="baseline")
+
+        rows = personamem.run_baseline(slices, _ask_baseline, say=lambda s: print(f"  {s}"))
+        per_persona = [
+            (sl.name, sum(r["correct"] for r in rows if r["persona"] == sl.name),
+             sum(1 for r in rows if r["persona"] == sl.name))
+            for sl in slices
+        ]
+        print()
+        print(f"  === BASELINE: {bmodel} reading raw context, {len(slices)} persona(s) ===")
+        for line in personamem.summarise(rows):
+            print("  " + line)
+        for name, right, tot in per_persona:
+            print(f"    {name}: {right}/{tot} = {right / tot:.2f}" if tot else f"    {name}: no probes")
+        dtok = session.deep_meter.total - d0
+        elapsed = time.time() - run_start
+        mins = f"{int(elapsed // 60)}m {int(elapsed % 60)}s" if elapsed >= 60 else f"{elapsed:.0f}s"
+        right = sum(r["correct"] for r in rows)
+        score = f"{right}/{len(rows)} = {right / len(rows):.2f}" if rows else "no probes"
+        print(f"  cost {dtok:,} deep tok (subscription)")
+        print(f"  time {mins}  ({len(rows)} model calls, ~{elapsed / len(rows):.1f}s each)" if rows else f"  time {mins}")
+        print(f"  build kaineros {build}")
+        out = Path(__file__).resolve().parents[2] / "bench-results"
+        out.mkdir(exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        fname = slices[0].name if not multi else f"{slices[0].name}-x{len(slices)}"
+        path = out / f"baseline-{bmodel}-{fname}-{stamp}.jsonl"
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"_meta": {"build": build, "score": score, "baseline_model": bmodel,
+                                          "mode": "raw-context-single-model", "personas": len(slices)}}) + "\n")
+            for r in rows:
+                f.write(json.dumps(r) + "\n")
+        print(f"  rows -> {path}")
+        print(f"  done in {mins}  ({score}) - baseline, no profile touched")
+        return
+
     def drain() -> None:  # background worker: wait visibly, with stall detection (as /metrics)
         if session.backlog() == 0:
             return

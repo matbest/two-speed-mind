@@ -106,6 +106,30 @@ def test_dataset_loader_and_smoke_cap(tmp_path):
     assert len(smoke.sessions) == 2 and len(smoke.probes) == 1  # capped context + question count
 
 
+def test_run_baseline_reads_raw_history_and_scores_like_run_slice():
+    """The single-model baseline feeds each probe the full history to one `ask` callable and scores
+    with the same score_answer — so a baseline row is directly comparable to a two-speed row."""
+    sl = personamem.load_sample()
+    seen_histories = []
+
+    def fake_ask(system: str, user: str) -> str:
+        seen_histories.append(user)
+        # a perfect oracle: the fixture's first probe is 'window' = option (b); answer that one right,
+        # everything else wrong — just enough to prove scoring + row shape, deterministically
+        return "b" if "seat should you book" in user else "z"
+
+    rows = personamem.run_baseline([sl], fake_ask)
+    assert len(rows) == len(sl.probes)
+    assert all(r["persona"] == sl.name for r in rows)
+    # the model was handed the actual conversation, not just the question
+    assert any("Green tea is my favourite drink." in u for u in seen_histories)
+    by_type = {r["type"]: r for r in rows}
+    assert by_type["recall_preference"]["correct"]      # answered 'b' -> window, the right option
+    assert not by_type["recall_fact"]["correct"]        # answered 'z' -> wrong
+    # rows carry the same fields the scorecard reports, so summarise() works on them unchanged
+    assert personamem.summarise(rows)[0].startswith("accuracy")
+
+
 def test_persona_ids_lists_distinct_ids_in_file_order(tmp_path):
     """The multi-persona bench enumerates personas from the question set — distinct ids, file order,
     optionally capped to the first N (one persona is too few questions to aggregate anything from)."""

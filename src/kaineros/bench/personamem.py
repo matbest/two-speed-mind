@@ -405,3 +405,45 @@ def summarise(rows: list[dict], stats: dict | None = None) -> list[str]:
         )
     lines.append("(PersonaMem's published frontier-model ceiling is ~0.52 on the full set)")
     return lines
+
+
+# --- single-model baseline -----------------------------------------------------------------------
+# The comparison point for the two-speed system: ONE frontier model reads the whole raw history and
+# answers each question directly — no compiled memory, no retrieval. Same probes and scorer as
+# run_slice, so Kaineros-vs-frontier is apples-to-apples on identical questions.
+BASELINE_SYSTEM = (
+    "You are a personalized assistant with a perfect record of your past conversations with one "
+    "user. You are given everything the user has told you, in order, then a question with lettered "
+    "options. Choose the ONE option that best fits everything the user has revealed about "
+    "themselves over time. Reply with ONLY that single letter — no words, no explanation."
+)
+
+
+def baseline_user(history: str, question: str) -> str:
+    return (f"Everything the user has told you, in order:\n{history}\n\n"
+            f"{question}\n\nAnswer with only the letter.")
+
+
+def run_baseline(slices: list[Slice], ask, say=lambda s: None) -> list[dict]:
+    """Feed each probe the FULL raw history + question to a single model (`ask(system, user) -> str`)
+    reading the context directly. Rows match run_slice's shape so `summarise` scores them the same."""
+    rows: list[dict] = []
+    total = sum(len(sl.probes) for sl in slices)
+    done = 0
+    for sl in slices:
+        # the same source material the two-speed system ingested (user turns), so the only variable
+        # is raw-context vs compiled-memory — not what information each side got to see
+        history = "\n".join(t for sess in sl.sessions for t in sess)
+        for probe in sl.probes:
+            done += 1
+            say(f"[{done}/{total}] {sl.name}: {probe.question[:50]}")
+            t0 = time.time()
+            ans = ask(BASELINE_SYSTEM, baseline_user(history, probe.text))
+            rows.append({
+                "qid": probe.qid, "type": probe.qtype,
+                "expected": f"({probe.letter}) {probe.answer}", "answer": ans,
+                "correct": score_answer(ans, probe), "abstained": False, "used": [],
+                "deep_tok": 0, "fast_tok": 0, "seconds": round(time.time() - t0, 2),
+                "persona": sl.name,
+            })
+    return rows
