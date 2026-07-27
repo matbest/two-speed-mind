@@ -1,113 +1,76 @@
-# A private, on-device memory that answers for 1/36th the cost of stuffing your history into a frontier model
+# Compiled memory vs. raw context: does a wiki help a small model remember you?
 
-**TL;DR.** Personalization needs an assistant to remember a long, evolving history of you. The usual
-way to do that — pour the whole conversation into a big model's context window on every question —
-is both **expensive** (it re-reads everything, every time) and **privacy-hostile** (your entire
-history is shipped to a cloud provider on every query). Kaineros takes the other road: it **compiles
-your history into a compact, human-readable memory that lives on your own machine**, and answers with
-a **small, fast model** that retrieves from it.
+*A finding, not a boast. Two-Speed Mind / Kaineros — internal study, PersonaMem v1 & v2, July 2026.*
+*Rendered version: https://claude.ai/code/artifact/b58e6ab0-9282-45e7-8547-b44bdaa6a490*
 
-On a slice of the [PersonaMem](https://github.com/bowen-upenn/PersonaMem) benchmark, that small model
-+ compiled memory answers each question with **~36× fewer tokens** than a frontier model reading the
-raw history — and keeps the data local. It gives up some raw accuracy at short context (0.61 vs 0.78,
-below) to do it. The bet, backed by independent work, is that the compiled-memory approach *pulls
-ahead* as histories grow long — exactly where context-stuffing gets slow, costly, and worse.
+**Kaineros** is a private, on-device assistant that compiles your conversations into a readable
+knowledge wiki, then answers with a small, fast model that *retrieves* from that wiki instead of
+re-reading your whole history. We benchmarked whether the wiki actually makes a small model better —
+and whether it's fast enough to feel like an assistant — on
+[PersonaMem](https://github.com/bowen-upenn/PersonaMem).
 
----
+## The finding
 
-## The problem: remembering you is unsolved, and the brute-force fix is costly and public
+A compiled memory **helps a small model on explicit recall** and cuts per-answer cost ~20×. On
+**implicit** preferences (things you reveal indirectly), the compilation throws away the signal, and
+the same small model does *better* reading the raw history. But reading the raw history took **~28
+seconds per answer** — a spinner, not an assistant. So the real target is a memory that can reach the
+raw conversation *on demand*: raw-context accuracy at compiled-memory speed.
 
-[PersonaMem](https://arxiv.org/abs/2504.14225) (COLM 2025) tests whether an assistant can track a
-user across a long, evolving conversation and respond in a personalized way. Frontier models plateau
-around **50%** on it — GPT-4.5 / GPT-4.1 at 0.52, and on the harder
-[PersonaMem-v2](https://arxiv.org/abs/2512.06688) (Dec 2025) even **GPT-5-Chat reaches only 45.6%**.
-The task is genuinely hard because personalization means holding the *whole* relationship in mind,
-and models degrade as the history stretches toward a million tokens.
+## What we compared
 
-The industry's answer is to shove more of the history into the context window. That has two costs
-people rarely price in:
+Three ways to answer the same multiple-choice questions, scored the same way:
+- **Kaineros** — a small model (Claude Haiku) reading the **compiled wiki**; compilation happens once, offline.
+- **Haiku, raw history** — the *same* small model handed the full raw conversation. Isolates what the wiki adds.
+- **Opus, raw history** — a frontier model reading the full history. A ceiling reference.
 
-- **Compute.** Re-reading tens of thousands of tokens of history on *every* question is enormous,
-  repeated work. It scales with how much you've ever said, not with the question.
-- **Privacy.** To answer "what should I cook tonight?", a context-stuffing assistant sends your
-  entire life's conversation to a cloud model. Every query re-exports everything.
+## The numbers
 
-## Kaineros: compile once, answer cheap, keep it local
+**PersonaMem v2** — 5 personas, 129 questions, 4-choice (random = 0.25):
 
-Kaineros splits the work across two models at two speeds over one knowledge base:
+| Setup | Reads | Accuracy | Tokens/answer | Latency |
+|---|---|---:|---:|---:|
+| **Kaineros (Haiku)** | compiled wiki | **0.41** | ~490 | fast |
+| Haiku | raw history | 0.50 | ~8,500 | ~28s |
+| Opus | raw history | 0.67 | ~9,400 | ~28s |
 
-- **A slow, deep compiler** runs off the interactive path (overnight, or between sessions). It reads
-  back over your conversation, ranks competing candidate facts, and promotes the fittest into a
-  clean, **human-readable knowledge base on your own disk** — one page per fact, each carrying its
-  provenance.
-- **A fast reader** answers you by *retrieving* the handful of relevant pages and phrasing an answer
-  — or honestly abstaining. It never re-reasons over the raw history; it reads a few pre-digested
-  facts. In these tests the reader was **Claude Haiku 4.5**; the offline compiler was a larger model.
+**PersonaMem v1** — 5 personas, 49 questions (earlier, mostly explicit recall):
 
-The expensive reasoning happens **once, at compile time** — not on every query.
+| Setup | Reads | Accuracy | Tokens/answer |
+|---|---|---:|---:|
+| **Kaineros (Haiku)** | compiled wiki | **0.61** | ~520 |
+| Opus | raw history | 0.78 | ~18,600 |
 
-## The head-to-head (same benchmark, same 49 questions, same scorer)
+On v1 the published leaderboard puts a Haiku-class model at ~0.30 on raw context — the wiki roughly
+*doubled* the small model on explicit recall. On v2, the picture flips.
 
-We ran the two-speed system against a single frontier model reading the raw history, on 49 questions
-across 5 personas at the 32k-context tier:
+## Reading it honestly
 
-| | Answering model | What it reads | Accuracy | Tokens / answer |
-|---|---|---|---|---|
-| **Frontier baseline** | Opus 4.8 | full raw history | **0.78** | **~18,600** (every query) |
-| **Kaineros** | Haiku 4.5 | compiled memory | 0.61 | **~518** |
+**The wiki helps explicit recall and hurts implicit inference.** v1 leans on facts stated outright;
+compiling helps. v2 is built on *implicit* preferences, and compilation distils exactly that signal
+away. Per type on v2, the memory loses most where fine detail matters — health & medical (0.47 vs
+0.82) and stereotype-relevant (0.27 vs 0.64) — while staying competitive or better on sensitive-info
+and therapy-background.
 
-Two honest readings of this table:
+**But raw context isn't a usable assistant.** Both raw-history setups cost ~28s/answer — the model
+must *read* ~32k tokens of history before writing a word (the prefill). Kaineros reads a few hundred
+tokens of wiki and answers fast. On time-to-first-word — the metric that decides whether something
+feels like an assistant — raw context loses outright. The compiled memory is the only responsive one.
 
-1. **At 32k context, the frontier model is more accurate** (0.78 vs 0.61). We do not claim to beat it
-   on raw accuracy at short history — where the whole conversation still fits comfortably in context,
-   brute force works well.
-2. **Kaineros answers each question for ~1/36th the tokens, on a much smaller model, with the data
-   kept local.** The deep reasoning was paid once at compile; every answer after that is cheap. That
-   is the trade: near-ballpark accuracy at a fraction of the per-query cost, privately.
+## What it points to
 
-## Why the trade tilts toward Kaineros as history grows
+If compiled facts answer *explicit* questions fast, and raw history answers *implicit* ones
+accurately but far too slowly, the synthesis is a memory that holds both and searches whichever the
+question needs: the small model browses the wiki **step by step**, and when the facts don't settle an
+implicit question it opens the **relevant raw snippet** on demand — a few hundred tokens, not thirty
+thousand. Explicit stays fast; implicit recovers the raw signal without the 28-second tax. That's the
+next build (spec §52), and this study is the evidence for it.
 
-The 32k tier is context-stuffing's *best* case — short enough that the full history fits and stays
-cheap. The interesting regime is long histories, and there the evidence favors compiled memory.
-PersonaMem-v2's own authors built a compiled-memory system and report it **distilling a long history
-into a 2k-token memory, scoring 55% while using 16× fewer input tokens — beating GPT-5-Chat's
-45.6%.** That's independent corroboration, from the benchmark's own team, that a compact memory
-outperforms raw context once the history is long. Kaineros is a local, human-readable, privacy-first
-take on the same principle.
+## Caveats
 
-## Privacy is the point, not a footnote
-
-Because the memory lives on your machine as a readable wiki:
-
-- **Fully local** (on capable hardware): nothing leaves the device — the real "your data stays
-  yours."
-- **Cloud-assisted** (on a small device): the cloud does the heavy compile, but it sees only the few
-  compiled facts needed for one answer, statelessly — never your whole history. Contrast that with
-  shipping your entire conversation into a context window on every query.
-
-And every answer is auditable: it traces back to the specific pages retrieved, each with provenance
-— so the reason for an answer is grounded in what's actually stored, not improvised.
-
-## Caveats (read before quoting a number)
-
-- **Small sample, single context tier.** 49 questions, 5 personas, 32k only — a slice, not the full
-  benchmark. Treat the accuracy figures as indicative, not certified.
-- **Our own harness.** We use PersonaMem's data and 4-choice format but our own loader and scorer,
-  not the authors' official eval script.
-- **A system, not a single model.** The comparison is a two-speed *system* (a large offline compiler
-  + a small online reader) against one model reading raw context — which is the whole design, but not
-  a like-for-like leaderboard row.
-- **The long-context advantage is argued, not yet shown by us.** We measured 32k (context-stuffing's
-  easy case) and cite PersonaMem-v2 for the crossover; we haven't run the 128k / 1M tiers ourselves.
-
-The honest one-liner: *a small model reading a compiled, on-device memory answers PersonaMem
-questions at ~1/36th the per-query token cost of a frontier model reading the raw history, trading
-some accuracy at short context for cost and privacy — and independent work suggests the compiled
-memory pulls ahead as histories grow.*
-
----
-
-*Benchmark: [PersonaMem](https://github.com/bowen-upenn/PersonaMem) (COLM 2025,
-[arXiv:2504.14225](https://arxiv.org/abs/2504.14225)) and
-[PersonaMem-v2](https://arxiv.org/abs/2512.06688). Kaineros build 0.123. Offline compiler: Claude
-(subscription). Fast reader: Claude Haiku 4.5.*
+- Small samples (129 / 49 questions, 5 personas each) — a slice, not the full benchmark.
+- Our own harness (PersonaMem's data + format, our loader/scorer) — so our Opus 0.67 isn't directly
+  comparable to published numbers like GPT-5's 45.6% on full v2.
+- Kaineros is a two-part *system* (large model compiles offline, small one answers); the raw rows are
+  single models.
+- One context tier (32k); the long-history advantage is argued, not shown here.
