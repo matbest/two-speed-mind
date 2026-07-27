@@ -808,61 +808,68 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         print("  which benchmark?")
         for i, n in enumerate(names, 1):
             print(f"    {i}) {n} - {benches[n]}")
+        print("  flags: personas=N (aggregate N personas), think=SECS, routek=N, "
+              "ingest=cached, summarise=on")
         raw = input("  > ").strip().lower()
         which = names[int(raw) - 1] if raw.isdigit() and 1 <= int(raw) <= len(names) else raw
     if which not in benches:
         print("  (cancelled)")
         return
+    # personas=N (slice only): run N personas and AGGREGATE — one persona (~9 Qs) is far too few to
+    # read a score off. Each persona keeps its own throwaway profile + ingest checkpoint.
+    n_personas = next((int(a.split("=")[1]) for a in args if a.startswith("personas=")
+                       and a.split("=")[1].isdigit()), None)
     try:
         if which == "sample":
-            sl = personamem.load_sample()
+            slices = [personamem.load_sample()]
         elif which == "sample-big":
-            sl = personamem.load_sample(personamem.SAMPLE_BIG)
+            slices = [personamem.load_sample(personamem.SAMPLE_BIG)]
         elif which == "slice-smoke":
             # fixed tiny params, no prompts — just prove the real-data loader works end to end
-            sl = personamem.load_dataset_slice(limit=2, max_sessions=3)
-        else:  # slice — the full persona
-            persona = pos[1] if len(pos) > 1 else (input("  persona id (blank = first)> ").strip() or None)
-            raw = pos[2] if len(pos) > 2 else input("  how many questions? [10]> ").strip()
+            slices = [personamem.load_dataset_slice(limit=2, max_sessions=3)]
+        else:  # slice — one persona, or many with personas=N
+            raw = pos[2] if len(pos) > 2 else (
+                "" if n_personas else input("  how many questions? [10]> ").strip())
             limit = int(raw) if raw.isdigit() else 10
-            sl = personamem.load_dataset_slice(persona=persona, limit=limit)
+            if n_personas:
+                pids = personamem.persona_ids("32k", n_personas)
+                print(f"  aggregating over {len(pids)} persona(s): {', '.join(pids)}")
+                slices = [personamem.load_dataset_slice(persona=p, limit=limit) for p in pids]
+            else:
+                persona = pos[1] if len(pos) > 1 else (input("  persona id (blank = first)> ").strip() or None)
+                slices = [personamem.load_dataset_slice(persona=persona, limit=limit)]
     except (RuntimeError, OSError) as exc:
         print(f"  {exc}")
         return
 
     from . import profiles
-
-    prev = session.profile_name
-    target = f"bench-{sl.name}"
-    session.load_profile(profiles.mind_dir(target))  # a throwaway mind, never your own
-    session.profile_name = target
-    session.wipe()
-
-    # checkpoint the (expensive, deterministic) ingest so you can iterate on grooming fast:
-    # `ingest=cached` boots from the saved post-ingest snapshot and skips extraction entirely.
-    ckpt = str(Path(profiles.mind_dir(target)).parent / "ingest-checkpoint")
-    skip_ingest = False
-    if any(a == "ingest=cached" for a in args):
-        from .persist import load_store
-
-        if (Path(ckpt) / "pages.json").exists():
-            loaded = load_store(ckpt)
-            session.store = loaded
-            session.compiler.store = loaded
-            session.runtime.store = loaded
-            skip_ingest = True
-            print(f"  (ingest=cached: booting from saved checkpoint at {ckpt})")
-        else:
-            print("  (ingest=cached requested but no checkpoint yet - ingesting fresh + saving one)")
-
-    d0, f0 = session.deep_meter.total, session.fast_meter.total
-    run_start = time.time()  # wall-clock for the whole run (it's subprocess-latency bound)
     from . import version as _kaineros_version
 
+    prev = session.profile_name
     build = _kaineros_version()
-    n_turns = sum(len(s) for s in sl.sessions)
     print(f"  kaineros {build}")
-    print(f"  {sl.name}: {len(sl.sessions)} session(s), {n_turns} turn(s), {len(sl.probes)} probe(s)")
+    multi = len(slices) > 1
+
+    run_start = time.time()  # wall-clock for the whole run (it's subprocess-latency bound)
+    d0, f0 = session.deep_meter.total, session.fast_meter.total
+
+    # flags parsed ONCE for the whole run (apply across every persona) ------------------------------
+    # how long the deep brain THINKS (grooms) before probing, in seconds (spec §49). Default 60;
+    # make it long to simulate an overnight think, e.g. `/bench 4 think=600`.
+    think = next((float(a.split("=")[1]) for a in args if a.startswith("think=")
+                  and a.split("=")[1].replace(".", "", 1).isdigit()), 60.0)
+    # routek=N: how many pages the fast brain retrieves per probe (default 3).
+    routek = next((int(a.split("=")[1]) for a in args if a.startswith("routek=")
+                   and a.split("=")[1].isdigit()), None)
+    if routek:
+        session.runtime.route_k = routek
+        print(f"  (retrieving top-{routek} pages per probe)")
+    # summarise=on: opt back into consolidation (spec §50). OFF by default — on PersonaMem it merged
+    # distinct same-topic facts into blobs and cost recall (see compiler.summarise_enabled).
+    session.compiler.summarise_enabled = any(a == "summarise=on" for a in args)
+    if session.compiler.summarise_enabled:
+        print("  (summarise mode ON - consolidating same-tag clusters)")
+    want_cached = any(a == "ingest=cached" for a in args)
 
     def drain() -> None:  # background worker: wait visibly, with stall detection (as /metrics)
         if session.backlog() == 0:
@@ -917,8 +924,16 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         if threading.current_thread() is main_thread:  # only the main thread may touch the cursor
             _paint_header(console, session)
 
-    rows: list[dict] = []
-    stats: dict = {}
+    all_rows: list[dict] = []
+    per_persona: list[tuple[str, int, int]] = []  # (name, right, total)
+    merged: dict = {
+        "inserted": 0, "candidates": 0, "genes": 0, "pages": 0,
+        "judge_calls": {"better": 0, "same_claim": 0, "same_account": 0, "conflicts": 0, "total": 0},
+        "phase_seconds": {"ingest": 0, "groom": 0, "probe": 0},
+    }
+    n_sessions_total = 0
+    any_cached = False
+    last_target = prev
     beater = None
     if watch_live:
         from . import calllog
@@ -928,27 +943,57 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         beater = threading.Thread(target=_beat, daemon=True)
         beater.start()
     try:
-        # how long the deep brain THINKS (grooms) before probing, in seconds (spec §49). Default
-        # 60; make it long to simulate an overnight think, e.g. `/bench 4 think=600`.
-        think = next((float(a.split("=")[1]) for a in args if a.startswith("think=")
-                      and a.split("=")[1].replace(".", "", 1).isdigit()), 60.0)
-        # routek=N: how many pages the fast brain retrieves per probe (default 3). Higher surfaces
-        # the needed fact when the mind has many pages, at a slightly longer fast-brain prompt.
-        routek = next((int(a.split("=")[1]) for a in args if a.startswith("routek=")
-                       and a.split("=")[1].isdigit()), None)
-        if routek:
-            session.runtime.route_k = routek
-            print(f"  (retrieving top-{routek} pages per probe)")
-        # summarise=on: opt back into consolidation (spec §50). OFF by default — on PersonaMem it
-        # merged distinct same-topic facts into blobs and cost recall (see compiler.summarise_enabled).
-        session.compiler.summarise_enabled = any(a == "summarise=on" for a in args)
-        if session.compiler.summarise_enabled:
-            print("  (summarise mode ON - consolidating same-tag clusters)")
-        rows, stats = personamem.run_slice(
-            session, sl, say=_say, wait_idle=drain if session.background else None,
-            think_seconds=think, skip_ingest=skip_ingest,
-            checkpoint_dir=None if skip_ingest else ckpt,
-        )
+        for sl in slices:
+            target = f"bench-{sl.name}"
+            last_target = target
+            session.load_profile(profiles.mind_dir(target))  # a throwaway mind, never your own
+            session.profile_name = target
+            session.wipe()
+            # checkpoint the (expensive, deterministic) ingest so you can iterate on grooming fast:
+            # `ingest=cached` boots from the saved post-ingest snapshot, per persona.
+            ckpt = str(Path(profiles.mind_dir(target)).parent / "ingest-checkpoint")
+            skip_ingest = False
+            if want_cached:
+                from .persist import load_store
+
+                if (Path(ckpt) / "pages.json").exists():
+                    loaded = load_store(ckpt)
+                    session.store = loaded
+                    session.compiler.store = loaded
+                    session.runtime.store = loaded
+                    skip_ingest = any_cached = True
+                    print(f"  [{sl.name}] booting from cached ingest")
+                else:
+                    print(f"  [{sl.name}] no checkpoint yet - ingesting fresh + saving one")
+            n_turns = sum(len(s) for s in sl.sessions)
+            n_sessions_total += len(sl.sessions)
+            print(f"  {sl.name}: {len(sl.sessions)} session(s), {n_turns} turn(s), "
+                  f"{len(sl.probes)} probe(s)")
+            rows, stats = personamem.run_slice(
+                session, sl, say=_say, wait_idle=drain if session.background else None,
+                think_seconds=think, skip_ingest=skip_ingest,
+                checkpoint_dir=None if skip_ingest else ckpt,
+            )
+            for r in rows:
+                r["persona"] = sl.name
+            all_rows.extend(rows)
+            right = sum(r["correct"] for r in rows)
+            per_persona.append((sl.name, right, len(rows)))
+            for k in ("inserted", "candidates", "genes", "pages"):
+                merged[k] += stats.get(k, 0)
+            for k, v in stats.get("judge_calls", {}).items():
+                merged["judge_calls"][k] = merged["judge_calls"].get(k, 0) + v
+            for k, v in (stats.get("phase_seconds") or {}).items():
+                merged["phase_seconds"][k] = merged["phase_seconds"].get(k, 0) + v
+            if not multi:  # single persona keeps the full per-probe detail (backward compatible)
+                for r in rows:
+                    mark = "OK" if r["correct"] else ("ABSTAIN" if r["abstained"] else "MISS")
+                    used = f", read {len(r['used'])} page(s): {', '.join(r['used'])}" if r.get("used") else ""
+                    print(f"probe [{r['type']}]: expected {r['expected']}")
+                    print(f"   -> {r['answer']}   [{mark}{used}]")
+            else:
+                s = f"{right}/{len(rows)} = {right / len(rows):.2f}" if rows else "no probes"
+                print(f"  [{sl.name}] {s}")
     except KeyboardInterrupt:
         print("\n  (bench cancelled - scoring what ran)")
     finally:
@@ -963,56 +1008,61 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         if pinned:
             _paint_header(console, session)
 
-    for r in rows:
-        mark = "OK" if r["correct"] else ("ABSTAIN" if r["abstained"] else "MISS")
-        used = f", read {len(r['used'])} page(s): {', '.join(r['used'])}" if r.get("used") else ""
-        print(f"probe [{r['type']}]: expected {r['expected']}")
-        print(f"   -> {r['answer']}   [{mark}{used}]")
+    merged["rank_per_element"] = (
+        round(merged["judge_calls"]["total"] / merged["inserted"], 1) if merged["inserted"] else None
+    )
     print()
-    for line in personamem.summarise(rows, stats):
+    if multi:
+        print(f"  === aggregate over {len(slices)} personas ===")
+    for line in personamem.summarise(all_rows, merged):
         print("  " + line)
+    if multi:  # so a single strong/weak persona can't hide inside the average
+        for name, right, tot in per_persona:
+            s = f"{right}/{tot} = {right / tot:.2f}" if tot else "no probes"
+            print(f"    {name}: {s}")
     dtok, ftok = session.deep_meter.total - d0, session.fast_meter.total - f0
     elapsed = time.time() - run_start
-    calls = (stats.get("judge_calls", {}) or {}).get("total", 0) + len(sl.sessions)  # judge + extracts
+    calls = merged["judge_calls"]["total"] + n_sessions_total  # judge + extracts
     per = f", ~{elapsed / calls:.1f}s/call" if calls else ""
     mins = f"{int(elapsed // 60)}m {int(elapsed % 60)}s" if elapsed >= 60 else f"{elapsed:.0f}s"
-    right = sum(r["correct"] for r in rows)
-    score = f"{right}/{len(rows)} = {right / len(rows):.2f}" if rows else "no probes"
+    right = sum(r["correct"] for r in all_rows)
+    score = f"{right}/{len(all_rows)} = {right / len(all_rows):.2f}" if all_rows else "no probes"
     print(f"  cost {dtok:,} deep + {ftok:,} fast tok")
-    ph = stats.get("phase_seconds") or {}
-    if ph:
-        print(f"  split ingest {ph.get('ingest', 0)}s · groom {ph.get('groom', 0)}s · "
-              f"probe {ph.get('probe', 0)}s  ({'cached ingest' if skip_ingest else 'fresh ingest'})")
+    ph = merged["phase_seconds"]
+    print(f"  split ingest {ph['ingest']}s · groom {ph['groom']}s · probe {ph['probe']}s  "
+          f"({'cached ingest' if any_cached else 'fresh ingest'})")
     print(f"  time {mins}  ({calls} deep calls{per} - wall-clock is bound by sequential claude -p)")
     print(f"  build kaineros {build}")
     out = Path(__file__).resolve().parents[2] / "bench-results"
     out.mkdir(exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    path = out / f"{sl.name}-{stamp}.jsonl"
+    fname = slices[0].name if not multi else f"{slices[0].name}-x{len(slices)}"
+    path = out / f"{fname}-{stamp}.jsonl"
+
     def _mname(brain) -> str:
         m = getattr(brain, "model", None)
         return m.split("/")[-1] if isinstance(m, str) and m else "fakes"
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(json.dumps({"_meta": {
-            "build": build, "score": score, "think": think,
+            "build": build, "score": score, "think": think, "personas": len(slices),
             "route_k": session.runtime.route_k,
             "fast": _mname(getattr(session.runtime, "model", None)),
             "deep": _mname(session.slow)}}) + "\n")
-        for r in rows:
+        for r in all_rows:
             f.write(json.dumps(r) + "\n")
     print(f"  rows -> {path}")
     from . import calllog
 
     if calllog.path() is not None:
         print(f"  calls -> {calllog.path()}  (raw deep/fast model transcript)")
-    if session.store_dir is not None:
+    if session.store_dir is not None and not multi:  # multi ends on the last persona's mind
         wiki = Path(session.store_dir) / "kainome"
         print(f"  wiki -> {wiki}")
         if wiki.exists():  # ctrl+clickable in Windows Terminal / VS Code
             index = wiki / "index.md"
             print(f"          {(index if index.exists() else wiki).as_uri()}  (ctrl+click to open)")
-    print(f"  done in {mins}  ({score}) - ran in profile '{target}'. "
+    print(f"  done in {mins}  ({score}) - ran in profile '{last_target}'. "
           f"/profile {prev} to return to your mind")
 
 

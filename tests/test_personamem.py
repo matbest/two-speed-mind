@@ -106,6 +106,22 @@ def test_dataset_loader_and_smoke_cap(tmp_path):
     assert len(smoke.sessions) == 2 and len(smoke.probes) == 1  # capped context + question count
 
 
+def test_persona_ids_lists_distinct_ids_in_file_order(tmp_path):
+    """The multi-persona bench enumerates personas from the question set — distinct ids, file order,
+    optionally capped to the first N (one persona is too few questions to aggregate anything from)."""
+    (tmp_path / "questions_32k.csv").write_text(
+        "persona_id,question_id,question_type,user_question_or_message,correct_answer,"
+        "all_options,shared_context_id,end_index_in_shared_context\n"
+        '7,q1,recall,"Q?",(a),"[""(a) x"", ""(b) y""]",CTX,1\n'
+        '7,q2,recall,"Q?",(a),"[""(a) x"", ""(b) y""]",CTX,1\n'   # 7 again — deduped
+        '3,q3,recall,"Q?",(a),"[""(a) x"", ""(b) y""]",CTX,1\n'
+        '9,q4,recall,"Q?",(a),"[""(a) x"", ""(b) y""]",CTX,1\n',
+        encoding="utf-8",
+    )
+    assert personamem.persona_ids(data_dir=tmp_path) == ["7", "3", "9"]  # order preserved, deduped
+    assert personamem.persona_ids(n=2, data_dir=tmp_path) == ["7", "3"]  # first N
+
+
 def test_dataset_loader_missing_data_gives_the_download_hint(tmp_path):
     import pytest
 

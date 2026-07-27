@@ -138,6 +138,21 @@ def _load_context(ctx_path: Path, ctx_id: str) -> list | None:
     return None
 
 
+def persona_ids(size: str = "32k", n: int | None = None, data_dir: Path = DATA_DIR) -> list[str]:
+    """The distinct persona_ids in the question set, in file order (first `n` if given). Lets the
+    bench run several personas and aggregate — one persona is too few questions to mean anything."""
+    qcsv = data_dir / f"questions_{size}.csv"
+    if not qcsv.exists():
+        raise RuntimeError(f"PersonaMem data not found: {qcsv} (see load_dataset_slice for download)")
+    seen: list[str] = []
+    with open(qcsv, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            pid = str(r.get("persona_id"))
+            if pid and pid not in seen:
+                seen.append(pid)
+    return seen[:n] if n is not None else seen
+
+
 def load_dataset_slice(
     size: str = "32k", persona: str | None = None, limit: int = 10,
     max_sessions: int | None = None, data_dir: Path = DATA_DIR
