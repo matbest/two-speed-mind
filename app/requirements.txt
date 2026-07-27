@@ -1,0 +1,10 @@
+# Kaineros desktop app — runtime deps.
+# The engine itself (kaineros) is imported from ../src (src-layout) or, if you
+# prefer, `pip install -e .` from the repo root. `rich` comes in via kaineros.
+
+pywebview>=5.0        # embedded WebView2 host + JS bridge
+# On Windows, pywebview uses the Edge WebView2 runtime (see README). No extra
+# GUI toolkit is required for the default EdgeChromium backend.
+
+# Three.js is VENDORED locally at app/web/vendor/three.min.js (offline-first) —
+# not a Python dependency.

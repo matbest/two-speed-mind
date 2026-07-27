@@ -1,0 +1,216 @@
+/* Kaineros desktop — dark, three-pane layout. */
+:root {
+  --bg: #0d1117;
+  --bg-2: #161b22;
+  --bg-3: #1c2330;
+  --line: #232b36;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #4c8bf5;
+  --accent-2: #2ea043;
+  --user-bubble: #234876;
+  --bot-bubble: #1c2330;
+  --radius: 12px;
+  --sidebar-w: 240px;
+  --stage-w: 360px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr var(--stage-w);
+  height: 100vh;
+}
+
+/* ---- LEFT: sidebar ---- */
+#sidebar {
+  background: var(--bg-2);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.side-head {
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.3px;
+}
+.user {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.new-convo {
+  margin: 12px;
+  padding: 9px 12px;
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+}
+.new-convo:hover { border-color: var(--accent); }
+.thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+.thread {
+  text-align: left;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.thread:hover { background: var(--bg-3); }
+.thread.active { background: var(--bg-3); color: #fff; }
+.side-foot {
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* ---- MIDDLE: chat ---- */
+#chat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.msg {
+  max-width: 78%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.msg.user {
+  align-self: flex-end;
+  background: var(--user-bubble);
+  border-bottom-right-radius: 4px;
+}
+.msg.bot {
+  align-self: flex-start;
+  background: var(--bot-bubble);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 4px;
+}
+.msg.bot.abstain { color: var(--muted); font-style: italic; }
+.msg .why {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px dashed var(--line);
+  padding-top: 5px;
+  white-space: pre-wrap;
+}
+.msg.typing { color: var(--muted); font-style: italic; }
+
+.composer {
+  display: flex;
+  gap: 8px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.input {
+  flex: 1;
+  padding: 11px 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  outline: none;
+  font-size: 14px;
+}
+.input:focus { border-color: var(--accent); }
+.send {
+  padding: 0 18px;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-weight: 600;
+}
+.send:hover { filter: brightness(1.08); }
+.send:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- RIGHT: face stage ---- */
+#stage {
+  position: relative;
+  background: radial-gradient(120% 120% at 50% 0%, #12203a 0%, var(--bg) 70%);
+  border-left: 1px solid var(--line);
+  min-width: 0;
+}
+#face-canvas { position: absolute; inset: 0; }
+#face-canvas canvas { display: block; }
+.face-hud {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  pointer-events: none;
+}
+.state-label {
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(0,0,0,0.35);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.mute {
+  pointer-events: auto;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 999px;
+  width: 30px; height: 30px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.mute.muted { opacity: 0.5; }
+
+/* No-WebGL fallback placeholder (see face.js). */
+.face-fallback {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 12px; text-align: center; padding: 24px;
+}

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kaineros</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- LEFT: conversation list. One memory per OS user; threads are just views. -->
+    <aside id="sidebar">
+      <header class="side-head">
+        <div class="brand">Kaineros</div>
+        <div class="user" id="os-user" title="One memory per OS user">…</div>
+      </header>
+      <button id="new-convo" class="new-convo">+ New conversation</button>
+      <nav id="thread-list" class="thread-list" aria-label="Conversations">
+        <!-- stub threads; selecting one just loads the middle pane -->
+        <button class="thread active" data-thread="today">Today</button>
+        <button class="thread" data-thread="scratch">Scratch thread</button>
+      </nav>
+      <footer class="side-foot">offline · deterministic fakes</footer>
+    </aside>
+
+    <!-- MIDDLE: the chat. -->
+    <main id="chat">
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <form id="composer" class="composer" autocomplete="off">
+        <input id="input" class="input" type="text"
+               placeholder="Ask Kaineros…" aria-label="Message" />
+        <button id="send" class="send" type="submit" title="Send">Send</button>
+      </form>
+    </main>
+
+    <!-- RIGHT: the animated low-poly face. -->
+    <section id="stage" aria-hidden="true">
+      <div id="face-canvas"></div>
+      <div class="face-hud">
+        <span id="state-label" class="state-label">idle</span>
+        <button id="mute" class="mute" title="Mute speech">🔊</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Vendored, offline. No CDN. -->
+  <script src="vendor/three.min.js"></script>
+  <script src="face.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
