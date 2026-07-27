@@ -809,7 +809,7 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         for i, n in enumerate(names, 1):
             print(f"    {i}) {n} - {benches[n]}")
         print("  flags: personas=N (aggregate N personas), think=SECS, routek=N, "
-              "ingest=cached, summarise=on")
+              "ingest=cached, summarise=on, arc=on, baseline[=model]")
         raw = input("  > ").strip().lower()
         which = names[int(raw) - 1] if raw.isdigit() and 1 <= int(raw) <= len(names) else raw
     if which not in benches:
@@ -869,6 +869,11 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
     session.compiler.summarise_enabled = any(a == "summarise=on" for a in args)
     if session.compiler.summarise_enabled:
         print("  (summarise mode ON - consolidating same-tag clusters)")
+    # arc=on: opt into arc synthesis (spec §51) — narrate evolving threads into arc pages, to lift
+    # the narrative question types (reason-behind-update, preference-evolution). OFF by default.
+    session.compiler.arc_enabled = any(a == "arc=on" for a in args)
+    if session.compiler.arc_enabled:
+        print("  (arc synthesis ON - narrating evolving threads beside the facts)")
     want_cached = any(a == "ingest=cached" for a in args)
 
     # baseline mode: skip the two-speed pipeline and measure ONE frontier model reading the RAW
@@ -1209,6 +1214,7 @@ def main(argv: list[str] | None = None) -> int:
             s.compiler.judge = CloudJudge(meter=s.deep_meter)
             s.slow = CloudSlowModel(meter=s.deep_meter)
             s.compiler.summariser = s.slow  # enable consolidation (spec §50)
+            s.compiler.arc_model = s.slow  # enable arc synthesis (spec §51), gated by arc_enabled
             s.runtime.model = CloudFastModel(meter=s.fast_meter)
             s.cloud = True
             s.backend_label, s.backend_detail, s.offdevice = "DEBUG - CLOUD", "Claude API", True
@@ -1243,6 +1249,7 @@ def main(argv: list[str] | None = None) -> int:
             s.compiler.judge = ClaudeCLIJudge(meter=s.deep_meter)
             s.slow = ClaudeCLISlowModel(meter=s.deep_meter)
             s.compiler.summariser = s.slow  # enable consolidation (spec §50)
+            s.compiler.arc_model = s.slow  # enable arc synthesis (spec §51), gated by arc_enabled
             s.runtime.model = OpenRouterFastModel(fast, meter=s.fast_meter)
             s.cloud = True
             s.backend_label = "DEBUG - CLOUD"
@@ -1275,6 +1282,7 @@ def main(argv: list[str] | None = None) -> int:
             s.compiler.judge = OpenRouterJudge(deep, meter=s.deep_meter)
             s.slow = OpenRouterSlowModel(deep, meter=s.deep_meter)
             s.compiler.summariser = s.slow  # enable consolidation (spec §50)
+            s.compiler.arc_model = s.slow  # enable arc synthesis (spec §51), gated by arc_enabled
             s.runtime.model = OpenRouterFastModel(fast, meter=s.fast_meter)
             s.cloud = True
             s.backend_label = "DEBUG - CLOUD"

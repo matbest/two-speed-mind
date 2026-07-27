@@ -136,3 +136,25 @@ def test_wipe_erases_the_persisted_mind(tmp_path):
     s.wipe()
     assert not (tmp_path / "pool.json").exists()
     assert load_store(tmp_path).genes() == []
+
+
+def test_arc_pages_survive_a_save_load_round_trip(tmp_path):
+    """`kind` round-trips so a synthesised arc (spec §51) isn't silently demoted to a fact on
+    reload — a fact page stays a fact, an arc page stays an arc, in both the pool and the wiki."""
+    from kaineros.schema import Page
+
+    store = Store()
+    store.pool["user.hobby.arc"] = [
+        Candidate(gene="user.hobby.arc", content="initially chess -> now go",
+                  kind="arc", provenance=Provenance(stated=True))
+    ]
+    store.clean["user.hobby.arc"] = Page(gene="user.hobby.arc", content="initially chess -> now go",
+                                         kind="arc", provenance=Provenance(stated=True))
+    store.clean["user.hobby"] = Page(gene="user.hobby", content="go",
+                                     provenance=Provenance(stated=True))  # kind defaults to "fact"
+
+    save_store(store, tmp_path)
+    back = load_store(tmp_path)
+    assert back.clean["user.hobby.arc"].kind == "arc"
+    assert back.clean["user.hobby"].kind == "fact"
+    assert back.pool["user.hobby.arc"][0].kind == "arc"

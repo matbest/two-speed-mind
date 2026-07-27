@@ -98,6 +98,7 @@ def save_store(store: Store, home: str | Path) -> None:
                     "gist": c.gist,
                     "tags": list(c.tags),
                     "wins": c.wins,
+                    "kind": c.kind,
                     "provenance": _prov_dict(c.provenance),
                 }
                 for c in candidates  # list order IS the rank order
@@ -115,6 +116,7 @@ def save_store(store: Store, home: str | Path) -> None:
                 "content": page.content,
                 "gist": page.gist,
                 "tags": list(page.tags),
+                "kind": page.kind,
                 "provenance": _prov_dict(page.provenance),
                 "rank_history": page.rank_history,
             }
@@ -213,6 +215,7 @@ def load_store(home: str | Path) -> Store:
                     wins=c.get("wins", 0),
                     tags=tuple(c.get("tags", ())),
                     gist=c.get("gist", ""),
+                    kind=c.get("kind", "fact"),
                 )
                 for c in candidates
             ]
@@ -243,6 +246,7 @@ def load_store(home: str | Path) -> Store:
                 rank_history=d.get("rank_history", []),
                 tags=tuple(d.get("tags", ())),
                 gist=d.get("gist", ""),
+                kind=d.get("kind", "fact"),
             )
     else:
         # legacy layout (pre-wiki): one JSON per page under kainome/; order from promotion times

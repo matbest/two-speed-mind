@@ -34,7 +34,7 @@ from .cloud import (
     same_account_prompt,
     same_claim_prompt,
 )
-from .schema import Candidate, Page, Turn
+from .schema import ArcDraft, Candidate, Page, Turn
 
 class RateLimitedError(RuntimeError):
     """The free-tier daily limit is spent. Carries the reset time so the app can wait it out."""
@@ -302,6 +302,19 @@ class OpenRouterSlowModel:
 
         return _chat(self.model, SUMMARISE_SYSTEM, summarise_user(topic, facts),
                      max_tokens=400, meter=self.meter, brain="deep", purpose="summarise").strip()
+
+    def arc(self, facts: list[str]) -> ArcDraft:
+        from .cloud import ARC_SCHEMA, ARC_SYSTEM, arc_user
+
+        for _ in range(2):  # retry once on degenerate output, then an empty arc (nothing promoted)
+            content = _chat(self.model, ARC_SYSTEM, arc_user(facts), schema=ARC_SCHEMA,
+                            max_tokens=800, meter=self.meter, brain="deep", purpose="arc")
+            try:
+                data = _json(content)
+                return ArcDraft(gist=data.get("gist", ""), beats=list(data.get("beats", [])))
+            except ValueError:
+                continue
+        return ArcDraft()
 
 
 class OpenRouterFastModel:

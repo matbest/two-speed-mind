@@ -17,7 +17,7 @@ import json
 import re
 import time
 
-from .schema import Candidate, Page, Provenance, Turn
+from .schema import ArcDraft, Candidate, Page, Provenance, Turn
 
 DEEP_MODEL = "claude-opus-4-8"
 FAST_MODEL = "claude-haiku-4-5"
@@ -154,6 +154,32 @@ SUMMARISE_SYSTEM = (
 def summarise_user(topic: str, facts: list[str]) -> str:
     joined = "\n".join(f"- {f}" for f in facts)
     return f"Topic: {topic}\nFacts to consolidate into one sentence:\n{joined}"
+
+
+ARC_SYSTEM = (
+    "You are given several facts about ONE user, in time order — one aspect of them that CHANGED "
+    "over time. Narrate the change as a short arc for a memory the user can read back:\n"
+    "- `gist`: one line, 'initially X → now Y' (add ', because Z' ONLY if a fact states the reason).\n"
+    "- `beats`: the ordered moments, each a short clause, dated where a fact gives a date, carrying "
+    "the reason ONLY IF the facts state one.\n"
+    "NEVER invent a reason the facts don't give — if no 'why' is stated, say WHAT changed without a "
+    "'because'. Use only what the facts contain. Reply with ONLY JSON matching the schema."
+)
+
+ARC_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "gist": {"type": "string"},
+        "beats": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["gist", "beats"],
+    "additionalProperties": False,
+}
+
+
+def arc_user(facts: list[str]) -> str:
+    joined = "\n".join(f"{i + 1}. {f}" for i, f in enumerate(facts))
+    return f"Facts about the user, in time order (oldest first):\n{joined}"
 
 
 def phrase_user(question: str, pages: list[Page], buffer: list[Turn]) -> str:
@@ -384,6 +410,17 @@ class CloudSlowModel:
         )
         _meter(self.meter, resp)
         return _first_text(resp).strip()
+
+    def arc(self, facts: list[str]) -> ArcDraft:
+        resp = self.client.messages.create(
+            model=self.model, max_tokens=800,
+            output_config={"format": {"type": "json_schema", "schema": ARC_SCHEMA}},
+            system=ARC_SYSTEM,
+            messages=[{"role": "user", "content": arc_user(facts)}],
+        )
+        _meter(self.meter, resp)
+        data = json.loads(_first_text(resp))
+        return ArcDraft(gist=data.get("gist", ""), beats=list(data.get("beats", [])))
 
 
 class CloudFastModel:

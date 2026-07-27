@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .schema import Candidate, Page, Turn
+from .schema import ArcDraft, Candidate, Page, Turn
 
 
 class Judge(Protocol):
@@ -51,6 +51,15 @@ class SlowModel(Protocol):
         (spec §50). Used by grooming to consolidate a fragmented cluster (many narrow genes about
         one aspect of the user) into a single dense page, so retrieval isn't diluted. Optional:
         the compiler only summarises when a model providing this is wired in.
+        """
+        ...
+
+    def arc(self, facts: list[str]) -> "ArcDraft":
+        """Narrate an evolving thread — `facts` in time order (oldest first) — into an ArcDraft
+        (gist + ordered beats), for the narrative questions flat facts can't answer (spec §51).
+        Uses ONLY what the facts state; never invents a reason (and the compiler drops any beat it
+        can't ground anyway). Optional: the compiler only arcs when a model providing this is wired
+        in and `arc_enabled` is set.
         """
         ...
 

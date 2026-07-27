@@ -33,7 +33,7 @@ from .cloud import (
     same_claim_prompt,
 )
 from .openrouter import _json  # the tolerant parser — CLI output has no schema forcing either
-from .schema import Candidate, Turn
+from .schema import ArcDraft, Candidate, Turn
 
 DEEP_MODEL = os.environ.get("KAINEROS_CLI_DEEP_MODEL", "sonnet")
 # generous: cold process start + model generation; the deep brain is off the interactive path
@@ -204,3 +204,16 @@ class ClaudeCLISlowModel:
 
         return _ask(SUMMARISE_SYSTEM, summarise_user(topic, facts),
                     model=self.model, meter=self.meter, purpose="summarise").strip()
+
+    def arc(self, facts: list[str]) -> ArcDraft:
+        from .cloud import ARC_SCHEMA, ARC_SYSTEM, arc_user
+
+        for _ in range(2):  # retry once on degenerate output, then an empty arc (nothing promoted)
+            content = _ask(ARC_SYSTEM, _with_schema(arc_user(facts), ARC_SCHEMA),
+                           model=self.model, meter=self.meter, purpose="arc")
+            try:
+                data = _json(content)
+                return ArcDraft(gist=data.get("gist", ""), beats=list(data.get("beats", [])))
+            except ValueError:
+                continue
+        return ArcDraft()

@@ -72,6 +72,15 @@ class FakeSlowModel:
         """Deterministic: join the facts, so tests can assert consolidation without a real model."""
         return f"{topic}: " + "; ".join(facts)
 
+    def arc(self, facts: list[str]):
+        """Deterministic narration (facts oldest-first): gist = the endpoints, beats = the facts
+        verbatim — invents nothing, so the compiler's grounding guard has nothing to strip."""
+        from .schema import ArcDraft
+
+        if not facts:
+            return ArcDraft()
+        return ArcDraft(gist=f"initially {facts[0]} -> now {facts[-1]}", beats=list(facts))
+
 
 class FakeFastModel:
     """Phrases a fixed template from the pages, so tests can prove that `why` is grounded
