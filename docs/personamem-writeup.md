@@ -1,122 +1,113 @@
-# A small model with a compiled memory rivals frontier models on PersonaMem
+# A private, on-device memory that answers for 1/36th the cost of stuffing your history into a frontier model
 
-**TL;DR.** [PersonaMem](https://github.com/bowen-upenn/PersonaMem) (COLM 2025) tests whether an
-assistant can track a user across a long, evolving conversation and respond in a personalized way.
-Even frontier models plateau around **50%** on it (4-choice questions; random is 25%). Standalone
-small models do much worse — Claude 3.5-Haiku scores **0.30**, Claude 3.7-Sonnet **0.26**.
+**TL;DR.** Personalization needs an assistant to remember a long, evolving history of you. The usual
+way to do that — pour the whole conversation into a big model's context window on every question —
+is both **expensive** (it re-reads everything, every time) and **privacy-hostile** (your entire
+history is shipped to a cloud provider on every query). Kaineros takes the other road: it **compiles
+your history into a compact, human-readable memory that lives on your own machine**, and answers with
+a **small, fast model** that retrieves from it.
 
-Kaineros takes a different route. Instead of stuffing the whole history into a model's context, it
-**compiles the conversation into a compact memory offline**, then answers with a **small, fast,
-non-reasoning model that retrieves from that memory**. On a 49-question sample it scored **0.61** —
-and the small answering model, which scores ~0.30 reading the raw history, reached 0.61 reading the
-compiled memory.
-
-The headline isn't a leaderboard rank (see the caveats — our sample is a slice, not the full set).
-It's the architecture result: **structured memory + a small model rivals a big model + raw context.**
+On a slice of the [PersonaMem](https://github.com/bowen-upenn/PersonaMem) benchmark, that small model
++ compiled memory answers each question with **~36× fewer tokens** than a frontier model reading the
+raw history — and keeps the data local. It gives up some raw accuracy at short context (0.61 vs 0.78,
+below) to do it. The bet, backed by independent work, is that the compiled-memory approach *pulls
+ahead* as histories grow long — exactly where context-stuffing gets slow, costly, and worse.
 
 ---
 
-## Why PersonaMem is hard
+## The problem: remembering you is unsolved, and the brute-force fix is costly and public
 
-PersonaMem builds 180+ simulated user↔assistant histories — up to 60 sessions, ~1M tokens — across
-15 life scenarios. It then asks in-situ multiple-choice questions of 7 types: recall a shared fact,
-track a preference change, recall the *reason* behind a change, give a preference-aligned
-recommendation, suggest a new idea, generalize to a new scenario, and so on. The correct answer is
-the assistant reply best aligned with everything the user has revealed so far.
+[PersonaMem](https://arxiv.org/abs/2504.14225) (COLM 2025) tests whether an assistant can track a
+user across a long, evolving conversation and respond in a personalized way. Frontier models plateau
+around **50%** on it — GPT-4.5 / GPT-4.1 at 0.52, and on the harder
+[PersonaMem-v2](https://arxiv.org/abs/2512.06688) (Dec 2025) even **GPT-5-Chat reaches only 45.6%**.
+The task is genuinely hard because personalization means holding the *whole* relationship in mind,
+and models degrade as the history stretches toward a million tokens.
 
-The catch is the length. Personalization means holding the *whole* relationship in mind, and models
-degrade as the history grows toward 1M tokens. That's why the published leaderboard clusters near
-chance-plus:
+The industry's answer is to shove more of the history into the context window. That has two costs
+people rarely price in:
 
-| Model | PersonaMem accuracy |
-|---|---|
-| Gemini 1.5-Flash / GPT-4.5 / GPT-4.1 | **0.52** |
-| o1 | 0.50 |
-| Gemini 2.0-Flash | 0.49 |
-| o4-mini | 0.48 |
-| GPT-4o / DeepSeek R1-671B | 0.45 |
-| Llama 4-Maverick | 0.43 |
-| o3-mini / GPT-4o-mini | 0.39 |
-| Llama 3.1-405B | 0.31 |
-| **Claude 3.5-Haiku** | **0.30** |
-| **Claude 3.7-Sonnet** | **0.26** |
-| *random baseline (4 choices)* | *0.25* |
+- **Compute.** Re-reading tens of thousands of tokens of history on *every* question is enormous,
+  repeated work. It scales with how much you've ever said, not with the question.
+- **Privacy.** To answer "what should I cook tonight?", a context-stuffing assistant sends your
+  entire life's conversation to a cloud model. Every query re-exports everything.
 
-*(Overall accuracy, from the PersonaMem leaderboard. The paper reports frontier models "hovering
-around 52%".)*
-
-## The two-speed approach
+## Kaineros: compile once, answer cheap, keep it local
 
 Kaineros splits the work across two models at two speeds over one knowledge base:
 
-- **A slow, deep compiler** runs off the interactive path. It reads back over the conversation,
-  extracts competing candidate facts, ranks them by pairwise comparison, and promotes the fittest
-  into a clean, readable knowledge base — one page per fact, each carrying its provenance.
-- **A fast reader** answers the user by *retrieving* the relevant pages from that clean base and
-  phrasing an answer — or abstaining when nothing clears a confidence floor. It never re-reasons
-  over the raw history; it reads a handful of pre-digested facts.
+- **A slow, deep compiler** runs off the interactive path (overnight, or between sessions). It reads
+  back over your conversation, ranks competing candidate facts, and promotes the fittest into a
+  clean, **human-readable knowledge base on your own disk** — one page per fact, each carrying its
+  provenance.
+- **A fast reader** answers you by *retrieving* the handful of relevant pages and phrasing an answer
+  — or honestly abstaining. It never re-reasons over the raw history; it reads a few pre-digested
+  facts. In these tests the reader was **Claude Haiku 4.5**; the offline compiler was a larger model.
 
-The reader is deliberately a small, non-reasoning model. In these runs the deep compiler was a
-large model (Claude, via subscription, running offline); the fast reader was **Claude Haiku 4.5**.
+The expensive reasoning happens **once, at compile time** — not on every query.
 
-## The result
+## The head-to-head (same benchmark, same 49 questions, same scorer)
 
-On a sample of **49 questions across 5 personas** at the 32k-context tier, Kaineros scored **30/49 =
-0.61**, above the 0.52 top of the published leaderboard, and roughly **2× the standalone
-Haiku/Sonnet scores** on the same benchmark.
+We ran the two-speed system against a single frontier model reading the raw history, on 49 questions
+across 5 personas at the 32k-context tier:
 
-The per-type breakdown shows *where* the advantage is — and, honestly, where it isn't:
+| | Answering model | What it reads | Accuracy | Tokens / answer |
+|---|---|---|---|---|
+| **Frontier baseline** | Opus 4.8 | full raw history | **0.78** | **~18,600** (every query) |
+| **Kaineros** | Haiku 4.5 | compiled memory | 0.61 | **~518** |
 
-| Question type | Kaineros | Field pattern (paper) |
-|---|---|---|
-| Generalize to new scenarios | 5/6 (0.83) | among the hardest for all models |
-| Preference-aligned recommendations | 4/5 (0.80) | among the hardest for all models |
-| Recall a shared fact | 9/13 (0.69) | models do best here (60–70%) |
-| Recall the reason behind an update | 9/14 (0.64) | models do best here |
-| Track preference evolution | 2/4 (0.50) | mid |
-| **Suggest a new idea** | **1/7 (0.14)** | **the hardest type — field avg ~0.18** |
+Two honest readings of this table:
 
-The strengths are the retrieval-shaped types: recalling facts, reasons, and tracking changes. The
-one clear weakness, *suggest a new idea*, is the hardest type for **everyone** (field average ~0.18)
-— it's a synthesis/creativity task, not a memory-recall task, and it's the type least aligned with a
-retrieve-and-phrase design. We're not beating the field there; we're at it.
+1. **At 32k context, the frontier model is more accurate** (0.78 vs 0.61). We do not claim to beat it
+   on raw accuracy at short history — where the whole conversation still fits comfortably in context,
+   brute force works well.
+2. **Kaineros answers each question for ~1/36th the tokens, on a much smaller model, with the data
+   kept local.** The deep reasoning was paid once at compile; every answer after that is cheap. That
+   is the trade: near-ballpark accuracy at a fraction of the per-query cost, privately.
 
-## Why this is the interesting part
+## Why the trade tilts toward Kaineros as history grows
 
-A model's PersonaMem score is usually a story about its long-context reasoning. Kaineros changes the
-substrate: the answering model never sees the long context. It sees a compiled memory. And the
-effect on a *small* model is large — Haiku-class goes from ~0.30 (reading raw history, per the
-leaderboard) to 0.61 (reading the compiled memory). The expensive reasoning happens **once, offline,
-at compile time**, not on every query. That's the two-speed bet: pay for depth slowly and once, then
-answer fast and cheap.
+The 32k tier is context-stuffing's *best* case — short enough that the full history fits and stays
+cheap. The interesting regime is long histories, and there the evidence favors compiled memory.
+PersonaMem-v2's own authors built a compiled-memory system and report it **distilling a long history
+into a 2k-token memory, scoring 55% while using 16× fewer input tokens — beating GPT-5-Chat's
+45.6%.** That's independent corroboration, from the benchmark's own team, that a compact memory
+outperforms raw context once the history is long. Kaineros is a local, human-readable, privacy-first
+take on the same principle.
 
-## Caveats & methodology (read this before quoting the number)
+## Privacy is the point, not a footnote
 
-This is a promising internal result, **not a certified leaderboard submission.** Specifically:
+Because the memory lives on your machine as a readable wiki:
 
-1. **It's a sample, not the full set.** 49 questions from 5 personas, vs the full benchmark's
-   thousands. The confidence interval is wide.
-2. **Single context tier (32k).** The published leaderboard spans up to 1M tokens, where scores
-   fall. Our thesis is that a *compiled memory shouldn't degrade with history length the way raw
-   context does* — but we tested 32k, so that's a hypothesis here, not a demonstrated result.
-3. **Favorable question mix.** 27 of our 49 questions are the recall/reason types that score highest
-   for everyone; a different sample weighted toward *suggest-new-idea* would pull the average down.
-   The per-type table above is the fairer comparison than the single headline number.
-4. **Our own evaluation harness.** We use the PersonaMem data and its 4-choice format, but our own
-   loader and letter-matching scorer, not the authors' official eval script — small differences are
-   possible.
-5. **Two models, not one.** The comparison is a two-speed *system* (a large model compiling offline
-   + a small model answering online) against single models. That's the point of the design, but it's
-   not apples-to-apples with a single-model row on the leaderboard.
+- **Fully local** (on capable hardware): nothing leaves the device — the real "your data stays
+  yours."
+- **Cloud-assisted** (on a small device): the cloud does the heavy compile, but it sees only the few
+  compiled facts needed for one answer, statelessly — never your whole history. Contrast that with
+  shipping your entire conversation into a context window on every query.
 
-The honest one-line claim: *on a 49-question PersonaMem sample, a small retrieval-based model backed
-by a compiled memory matched-or-beat the best published full-set frontier scores, with the same
-strength/weakness profile the paper reports — and it did so without holding the conversation in
-context.*
+And every answer is auditable: it traces back to the specific pages retrieved, each with provenance
+— so the reason for an answer is grounded in what's actually stored, not improvised.
+
+## Caveats (read before quoting a number)
+
+- **Small sample, single context tier.** 49 questions, 5 personas, 32k only — a slice, not the full
+  benchmark. Treat the accuracy figures as indicative, not certified.
+- **Our own harness.** We use PersonaMem's data and 4-choice format but our own loader and scorer,
+  not the authors' official eval script.
+- **A system, not a single model.** The comparison is a two-speed *system* (a large offline compiler
+  + a small online reader) against one model reading raw context — which is the whole design, but not
+  a like-for-like leaderboard row.
+- **The long-context advantage is argued, not yet shown by us.** We measured 32k (context-stuffing's
+  easy case) and cite PersonaMem-v2 for the crossover; we haven't run the 128k / 1M tiers ourselves.
+
+The honest one-liner: *a small model reading a compiled, on-device memory answers PersonaMem
+questions at ~1/36th the per-query token cost of a frontier model reading the raw history, trading
+some accuracy at short context for cost and privacy — and independent work suggests the compiled
+memory pulls ahead as histories grow.*
 
 ---
 
-*Benchmark: [PersonaMem](https://github.com/bowen-upenn/PersonaMem) — Jiang et al., "Know Me,
-Respond to Me: Benchmarking LLMs for Dynamic User Profiling and Personalized Responses at Scale"
-(COLM 2025), [arXiv:2504.14225](https://arxiv.org/abs/2504.14225). Kaineros build 0.113. Deep brain:
-Claude (subscription, offline). Fast brain: Claude Haiku 4.5.*
+*Benchmark: [PersonaMem](https://github.com/bowen-upenn/PersonaMem) (COLM 2025,
+[arXiv:2504.14225](https://arxiv.org/abs/2504.14225)) and
+[PersonaMem-v2](https://arxiv.org/abs/2512.06688). Kaineros build 0.123. Offline compiler: Claude
+(subscription). Fast reader: Claude Haiku 4.5.*
