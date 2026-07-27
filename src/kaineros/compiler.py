@@ -50,6 +50,11 @@ class Compiler:
         # clusters qualify — big enough to be worth merging, small enough not to over-consolidate a
         # broad topic (e.g. all 28 "music" pages).
         self.summariser = None
+        # OFF by default: on PersonaMem, consolidating same-tag clusters merged DISTINCT facts
+        # (62/89 pages shared the tag `music`) into a handful of blobs — it destroyed the
+        # granularity recall needs for no measurable gain. Kept as an opt-in experiment
+        # (`summarise=on` on /bench) until it's gated to genuine redundancy, not shared topic.
+        self.summarise_enabled = False
         self.summarise_min = 4
         self.summarise_max = 10
         # genes changed (promoted/re-promoted) since the last CLEANUP pass. Cleanup runs on a
@@ -204,7 +209,11 @@ class Compiler:
             # the cross-page sweep — it shrinks the mind, so the O(pages²) fusion then runs on far
             # fewer pages. Consolidating all qualifying clusters in one pass (not one-per-pass)
             # means a fragmented mind actually collapses within the think budget.
-            summarised = self._summarise() if self.summariser is not None else 0
+            summarised = (
+                self._summarise()
+                if (self.summariser is not None and self.summarise_enabled)
+                else 0
+            )
             self._call_budget = self.max_cleanup_calls
             pairs = self._pairs_to_check([g for g in self._dirty_genes if g in self.store.clean])
             fused = self._fusion(pairs)

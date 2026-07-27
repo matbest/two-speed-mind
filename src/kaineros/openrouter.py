@@ -312,7 +312,14 @@ class OpenRouterFastModel:
         self.meter = meter
 
     def answer(self, question: str, pages: list[Page], buffer: list[Turn]) -> str:
+        from .cloud import answer_prompt, is_multiple_choice
+
+        mc = is_multiple_choice(question)
+        system, user = answer_prompt(question, pages, buffer)
+        # give MC a little more headroom: a reasoning-leaning model spends tokens thinking before it
+        # names the letter, and truncating mid-thought (the observed bug) scores as no answer at all
         return _chat(
-            self.model, PHRASE_SYSTEM, phrase_user(question, pages, buffer),
-            max_tokens=300, meter=self.meter, brain="fast", purpose="phrase",
+            self.model, system, user,
+            max_tokens=500 if mc else 300, meter=self.meter, brain="fast",
+            purpose="select" if mc else "phrase",
         ).strip()

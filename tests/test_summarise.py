@@ -16,6 +16,7 @@ def _promote(comp: Compiler, gene: str, content: str, tags: tuple[str, ...]) -> 
 def _build() -> Compiler:
     comp = Compiler(Store(), FakeJudge(), promote_after=1)
     comp.summariser = FakeSlowModel()  # deterministic: joins the facts
+    comp.summarise_enabled = True  # off by default now (see compiler); these tests exercise it
     comp.summarise_min, comp.summarise_max = 4, 10
     return comp
 
@@ -50,6 +51,18 @@ def test_no_summariser_means_no_consolidation():
         _promote(comp, f"user.music.fact{i}", f"music fact {i}", ("music", "production"))
     comp.housekeep(cleanup=True)
     assert len(comp.store.pages()) == 5  # nothing consolidated without a summariser
+
+
+def test_summarise_is_off_by_default_even_with_a_summariser():
+    # a summariser can be wired in, but consolidation only runs when explicitly enabled — the
+    # default is OFF (it merged distinct facts on PersonaMem and cost recall)
+    comp = Compiler(Store(), FakeJudge(), promote_after=1)
+    comp.summariser = FakeSlowModel()  # wired, but summarise_enabled stays False
+    assert comp.summarise_enabled is False
+    for i in range(5):
+        _promote(comp, f"user.music.fact{i}", f"music fact {i}", ("music", "production"))
+    comp.housekeep(cleanup=True)
+    assert len(comp.store.pages()) == 5  # gated off: nothing consolidated
 
 
 def test_a_broad_topic_is_not_over_consolidated():

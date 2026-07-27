@@ -939,6 +939,11 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         if routek:
             session.runtime.route_k = routek
             print(f"  (retrieving top-{routek} pages per probe)")
+        # summarise=on: opt back into consolidation (spec §50). OFF by default — on PersonaMem it
+        # merged distinct same-topic facts into blobs and cost recall (see compiler.summarise_enabled).
+        session.compiler.summarise_enabled = any(a == "summarise=on" for a in args)
+        if session.compiler.summarise_enabled:
+            print("  (summarise mode ON - consolidating same-tag clusters)")
         rows, stats = personamem.run_slice(
             session, sl, say=_say, wait_idle=drain if session.background else None,
             think_seconds=think, skip_ingest=skip_ingest,

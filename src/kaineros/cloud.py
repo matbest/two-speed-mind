@@ -14,6 +14,7 @@ The core and all tests never import this module.
 from __future__ import annotations
 
 import json
+import re
 import time
 
 from .schema import Candidate, Page, Provenance, Turn
@@ -162,6 +163,42 @@ def phrase_user(question: str, pages: list[Page], buffer: list[Turn]) -> str:
         f"Retrieved notes:\n{notes or '- (none)'}\n\n"
         f"Recent conversation:\n{recent}\n\nQuestion: {question}"
     )
+
+
+# Some questions aren't "say the value" — they're "pick the option that fits" (PersonaMem's whole
+# task is response-SELECTION). The phrase prompt is wrong for that: the weak model starts reasoning
+# in prose and gets cut off before it ever names a choice. Detect the lettered-option shape and
+# switch to a selection prompt. Still grounded (spec, the one principle): retrieval decided WHAT is
+# known; the model only maps those facts onto the option that matches — it doesn't decide truth.
+_MC_OPTION_RE = re.compile(r"(?m)^\s*\(([a-z])\)\s")
+
+
+def is_multiple_choice(question: str) -> bool:
+    """True when the question offers ≥2 lettered options — an (a)/(b)/(c) selection, not a lookup."""
+    return len(_MC_OPTION_RE.findall(question)) >= 2
+
+
+SELECT_SYSTEM = (
+    "You are given facts about the user (each written `key = value`) and a question with lettered "
+    "options. Pick the ONE option most consistent with those facts. "
+    "Reply with ONLY that single letter — no words, no reasoning, no explanation. "
+    "If the facts don't settle it, still pick the option that best fits what is known about the user."
+)
+
+
+def select_user(question: str, pages: list[Page], buffer: list[Turn]) -> str:
+    notes = "\n".join(_note(p) for p in pages)
+    return (
+        f"Facts I remember about the user:\n{notes or '- (none)'}\n\n"
+        f"{question}\n\nAnswer with only the letter."
+    )
+
+
+def answer_prompt(question: str, pages: list[Page], buffer: list[Turn]) -> tuple[str, str]:
+    """(system, user) for the fast brain: a selection prompt for MC questions, else the phraser."""
+    if is_multiple_choice(question):
+        return SELECT_SYSTEM, select_user(question, pages, buffer)
+    return PHRASE_SYSTEM, phrase_user(question, pages, buffer)
 
 
 # A deliberate update is detected DETERMINISTICALLY from the turn text (not asked of the model in
@@ -358,11 +395,12 @@ class CloudFastModel:
         self.client = _client()
 
     def answer(self, question: str, pages: list[Page], buffer: list[Turn]) -> str:
+        system, user = answer_prompt(question, pages, buffer)
         resp = self.client.messages.create(
             model=self.model,
-            max_tokens=300,
-            system=PHRASE_SYSTEM,
-            messages=[{"role": "user", "content": phrase_user(question, pages, buffer)}],
+            max_tokens=500 if is_multiple_choice(question) else 300,
+            system=system,
+            messages=[{"role": "user", "content": user}],
         )
         _meter(self.meter, resp)
         return _first_text(resp).strip()

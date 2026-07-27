@@ -92,3 +92,33 @@ def test_abstention_leaves_a_trace_too():
     assert resp.abstained is True
     assert resp.trace.abstained is True
     assert "food" in resp.trace.query_terms              # what was probed, even with no pages
+
+
+def test_multiple_choice_gets_a_selection_prompt_not_the_phraser():
+    """PersonaMem's task is response-SELECTION: a lettered question wants a letter, not a phrased
+    value. The fast brain must switch to the selection prompt so it names a choice grounded in the
+    retrieved facts, instead of leaking chain-of-thought and getting truncated before it decides."""
+    from kaineros.cloud import (
+        PHRASE_SYSTEM,
+        SELECT_SYSTEM,
+        answer_prompt,
+        is_multiple_choice,
+    )
+    from kaineros.schema import Page, Provenance
+
+    mc = (
+        "Which drink is my current go-to?\n"
+        "(a) green tea\n(b) matcha lattes\n(c) cola\n"
+        "Answer with the letter of the best option."
+    )
+    assert is_multiple_choice(mc)
+    assert not is_multiple_choice("Where do I live?")
+    assert not is_multiple_choice("What's my favourite (special) drink?")  # one paren, not options
+
+    page = Page(gene="user.drink.go_to", content="matcha", gist="matcha lattes",
+                provenance=Provenance(stated=True), tags=("drink",))
+    sys_mc, user_mc = answer_prompt(mc, [page], [])
+    sys_lookup, _ = answer_prompt("Where do I live?", [page], [])
+    assert sys_mc is SELECT_SYSTEM and sys_lookup is PHRASE_SYSTEM
+    assert "matcha lattes" in user_mc            # the grounded fact is put in front of the model
+    assert user_mc.rstrip().endswith("letter.")  # and it's told to answer with only the letter
