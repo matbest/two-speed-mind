@@ -30,4 +30,5 @@ personas/*/mind/
 
 # Benchmark data (downloaded) and run results - never commit
 evals/personamem/
+evals/personamem-v2/
 bench-results/

@@ -808,8 +808,8 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         print("  which benchmark?")
         for i, n in enumerate(names, 1):
             print(f"    {i}) {n} - {benches[n]}")
-        print("  flags: personas=N (aggregate N personas), think=SECS, routek=N, "
-              "ingest=cached, summarise=on, arc=on, baseline[=model]")
+        print("  flags: personas=N (aggregate N personas), v2 (modern PersonaMem-v2), think=SECS, "
+              "routek=N, ingest=cached, summarise=on, arc=on, baseline[=model]")
         raw = input("  > ").strip().lower()
         which = names[int(raw) - 1] if raw.isdigit() and 1 <= int(raw) <= len(names) else raw
     if which not in benches:
@@ -827,17 +827,21 @@ def _cmd_bench(session: Session, args: list[str], pinned: bool, console) -> None
         elif which == "slice-smoke":
             # fixed tiny params, no prompts — just prove the real-data loader works end to end
             slices = [personamem.load_dataset_slice(limit=2, max_sessions=3)]
-        else:  # slice — one persona, or many with personas=N
+        else:  # slice — one persona, or many with personas=N; `v2` picks the modern benchmark
+            v2 = any(a == "v2" for a in args)
+            load = personamem.load_v2_slice if v2 else personamem.load_dataset_slice
             raw = pos[2] if len(pos) > 2 else (
                 "" if n_personas else input("  how many questions? [10]> ").strip())
-            limit = int(raw) if raw.isdigit() else 10
+            limit = int(raw) if raw.isdigit() else (30 if v2 else 10)
             if n_personas:
-                pids = personamem.persona_ids("32k", n_personas)
-                print(f"  aggregating over {len(pids)} persona(s): {', '.join(pids)}")
-                slices = [personamem.load_dataset_slice(persona=p, limit=limit) for p in pids]
+                pids = (personamem.v2_persona_ids(n_personas) if v2
+                        else personamem.persona_ids("32k", n_personas))
+                print(f"  {'PersonaMem-v2 ' if v2 else ''}aggregating over {len(pids)} "
+                      f"persona(s): {', '.join(pids)}")
+                slices = [load(persona=p, limit=limit) for p in pids]
             else:
                 persona = pos[1] if len(pos) > 1 else (input("  persona id (blank = first)> ").strip() or None)
-                slices = [personamem.load_dataset_slice(persona=persona, limit=limit)]
+                slices = [load(persona=persona, limit=limit)]
     except (RuntimeError, OSError) as exc:
         print(f"  {exc}")
         return

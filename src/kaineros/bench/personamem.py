@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv
 import json
+import random
 import re as _re
 import time
 import tomllib
@@ -32,6 +33,7 @@ EVALS_DIR = Path(__file__).resolve().parents[3] / "evals"
 SAMPLE = EVALS_DIR / "personamem-sample.toml"
 SAMPLE_BIG = EVALS_DIR / "personamem-sample-big.toml"
 DATA_DIR = EVALS_DIR / "personamem"
+V2_DIR = EVALS_DIR / "personamem-v2"  # the modern (Dec 2025) benchmark — different schema, see below
 LETTERS = "abcdefgh"
 
 
@@ -214,6 +216,108 @@ def load_dataset_slice(
             )
         )
     return Slice(name=f"personamem-{size}-p{pid}", sessions=sessions, probes=probes)
+
+
+# --- PersonaMem-v2 (Dec 2025) ----------------------------------------------------------------------
+# A different schema from v1: options aren't pre-lettered — each row carries `correct_answer` (text)
+# plus `incorrect_answers` (a JSON list of texts), and the context is a PER-PERSONA chat-history JSON
+# (`chat_history_32k_link`) of full user+assistant dialogue, not a shared-context id. `updated`/
+# `prev_pref` mark preference changes; `pref_type` categorises. We ingest the USER turns (parity with
+# v1 — the only variable vs the baseline stays raw-context-vs-compiled-memory), build a 4-way MC from
+# correct+incorrect (deterministically shuffled to avoid position bias), and reuse Probe/score_answer.
+def _v2_content(raw: str) -> str:
+    """`user_query` is a python-dict repr {'role':'user','content':'...'} — pull the content."""
+    import ast
+
+    for parse in (ast.literal_eval, json.loads):
+        try:
+            got = parse(raw)
+            if isinstance(got, dict):
+                return str(got.get("content", "")).strip()
+        except (ValueError, SyntaxError):
+            continue
+    m = _re.search(r"['\"]content['\"]\s*:\s*['\"](.*)['\"]\s*}\s*$", str(raw), _re.S)
+    return (m.group(1) if m else str(raw)).strip()
+
+
+def _v2_list(raw: str) -> list[str]:
+    """`incorrect_answers` is a stringified list of answer texts."""
+    import ast
+
+    for parse in (json.loads, ast.literal_eval):
+        try:
+            got = parse(raw)
+            if isinstance(got, list):
+                return [str(x).strip() for x in got if str(x).strip()]
+        except (ValueError, SyntaxError):
+            continue
+    return []
+
+
+def v2_persona_ids(n: int | None = None, data_dir: Path = V2_DIR) -> list[str]:
+    qcsv = data_dir / "benchmark" / "text" / "benchmark.csv"
+    if not qcsv.exists():
+        raise RuntimeError(f"PersonaMem-v2 not found: {qcsv} (see load_v2_slice for the download)")
+    seen: list[str] = []
+    with open(qcsv, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            pid = str(r.get("persona_id"))
+            if pid and pid not in seen:
+                seen.append(pid)
+    return seen[:n] if n is not None else seen
+
+
+def load_v2_slice(persona: str | None = None, limit: int = 30,
+                  max_sessions: int | None = None, data_dir: Path = V2_DIR) -> Slice:
+    """A slice of the modern PersonaMem-v2 (32k tier, text). Same `Slice` shape as v1, so run_slice /
+    run_baseline work unchanged."""
+    qcsv = data_dir / "benchmark" / "text" / "benchmark.csv"
+    if not qcsv.exists():
+        raise RuntimeError(
+            f"PersonaMem-v2 questions not found under {data_dir}.\n"
+            "  download the text benchmark + the 32k chat histories you need, e.g.:\n"
+            "    hf download bowen-upenn/PersonaMem-v2 --repo-type dataset "
+            f"--local-dir {data_dir} --include 'benchmark/text/benchmark.csv' "
+            "--include 'data/chat_history_32k/*'"
+        )
+    rows = list(csv.DictReader(open(qcsv, newline="", encoding="utf-8")))
+    pid = str(persona) if persona is not None else str(rows[0].get("persona_id"))
+    mine = [r for r in rows if str(r.get("persona_id")) == pid][:limit]
+    if not mine:
+        raise RuntimeError(f"no v2 questions for persona_id={pid!r}")
+
+    hist = data_dir / mine[0]["chat_history_32k_link"]
+    if not hist.exists():
+        raise RuntimeError(
+            f"chat history not downloaded: {hist}\n  fetch it with:\n"
+            f"    hf download bowen-upenn/PersonaMem-v2 --repo-type dataset --local-dir {data_dir} "
+            f"--include '{mine[0]['chat_history_32k_link']}'"
+        )
+    chat = json.load(open(hist, encoding="utf-8")).get("chat_history", [])
+    turns = [str(m["content"]).strip() for m in chat
+             if isinstance(m, dict) and m.get("role") == "user" and m.get("content")]
+    sessions = [turns[i : i + 10] for i in range(0, len(turns), 10)]
+    if max_sessions is not None:
+        sessions = sessions[:max_sessions]
+
+    probes = []
+    for i, r in enumerate(mine):
+        correct = str(r["correct_answer"]).strip()
+        options = [correct] + _v2_list(r["incorrect_answers"])
+        random.Random(f"{pid}-{i}").shuffle(options)  # deterministic, kills position bias
+        updated = str(r.get("updated", "")).strip().lower() == "true"
+        probes.append(
+            Probe(
+                qid=str(r.get("question_id", f"{pid}-q{i}")),
+                # group the preference-UPDATE questions (v2's evolution analog) under one type
+                qtype="updated_preference" if updated else str(r.get("pref_type", "unknown")),
+                question=_v2_content(r["user_query"]),
+                options=options,
+                answer=correct,
+                after_session=len(sessions) - 1,
+            )
+        )
+    return Slice(name=f"personamem-v2-32k-p{pid}", sessions=sessions, probes=probes)
 
 
 def score_answer(answer: str, probe: Probe) -> bool:
