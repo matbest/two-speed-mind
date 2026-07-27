@@ -398,7 +398,7 @@ class CloudFastModel:
         system, user = answer_prompt(question, pages, buffer)
         resp = self.client.messages.create(
             model=self.model,
-            max_tokens=500 if is_multiple_choice(question) else 300,
+            max_tokens=16 if is_multiple_choice(question) else 300,  # MC wants a bare letter
             system=system,
             messages=[{"role": "user", "content": user}],
         )

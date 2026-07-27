@@ -316,10 +316,11 @@ class OpenRouterFastModel:
 
         mc = is_multiple_choice(question)
         system, user = answer_prompt(question, pages, buffer)
-        # give MC a little more headroom: a reasoning-leaning model spends tokens thinking before it
-        # names the letter, and truncating mid-thought (the observed bug) scores as no answer at all
+        # MC wants a bare letter (~1 token). A small ceiling is right: a model that commits answers
+        # in one token anyway, and one that rambles instead of deciding shouldn't be funded to fill
+        # a big budget with chain-of-thought that never names a choice (observed on the hardest Qs).
         return _chat(
             self.model, system, user,
-            max_tokens=500 if mc else 300, meter=self.meter, brain="fast",
+            max_tokens=16 if mc else 300, meter=self.meter, brain="fast",
             purpose="select" if mc else "phrase",
         ).strip()
