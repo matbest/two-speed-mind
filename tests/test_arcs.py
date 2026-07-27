@@ -42,6 +42,14 @@ class _ConfabModel:
         )
 
 
+class _EmptyArcModel:
+    """A narrator that returns nothing usable (bad JSON, a refusal). The empty-arc guard must refuse
+    to promote a story with no grounded beats, rather than pollute the wiki with a blank page."""
+
+    def arc(self, facts: list[str]) -> ArcDraft:
+        return ArcDraft(gist="", beats=[])
+
+
 def _comp(arc_model=None) -> Compiler:
     comp = Compiler(Store(), FakeJudge(), promote_after=1)
     comp.arc_model = arc_model or _ArcModel()  # the deep model available while grooming
@@ -62,6 +70,16 @@ def _evolving_thread(comp: Compiler) -> None:
     """A supersedes chain: disliked → now loves. States WHAT changed, never WHY."""
     _add(comp, "found music theory a dry chore", turn="t1", when=1)
     _add(comp, "now loves music theory", turn="t2", when=2, supersedes=True)
+
+
+def _fact(comp: Compiler, gene: str, content: str, turn: str, when: int,
+          tags: tuple[str, ...]) -> None:
+    """A single, distinct fact (its OWN gene — no supersedes chain)."""
+    comp.insert(Candidate(
+        gene=gene, content=content, tags=tags,
+        provenance=Provenance(source_turn_ids=(turn,), source_texts=(content,), created_at=float(when)),
+    ))
+    comp.housekeep(cleanup=True)
 
 
 def _arcs(comp: Compiler) -> list:
@@ -117,3 +135,25 @@ def test_arc_is_rebuilt_when_the_thread_gains_a_new_fact():
     arcs = _arcs(comp)
     assert len(arcs) == 1                 # the SAME thread's arc is UPDATED, not a second one added
     assert "teaches" in arcs[0].content   # the new beat folded in — a stale arc never outlives facts
+
+
+def test_arc_from_a_same_tag_cluster_across_time():
+    """The multi-gene evolution — where the real PersonaMem threads live. Three DISTINCT genes (no
+    supersedes chain, each its own pool) share a tag and are stated at different times: a thread
+    that evolved. Arc detection must catch it via the shared tag, not only via a supersedes chain."""
+    comp = _comp()
+    _fact(comp, "user.music.podcast_start", "started a music podcast in 2018", "t1", 1, ("podcast",))
+    _fact(comp, "user.music.podcast_growth", "the podcast gained a following in 2019", "t2", 2, ("podcast",))
+    _fact(comp, "user.music.podcast_stop", "stopped the podcast in 2020", "t3", 3, ("podcast",))
+    arcs = _arcs(comp)
+    assert len(arcs) == 1
+    assert "started" in arcs[0].content and "stopped" in arcs[0].content   # narrated across time
+    assert set(arcs[0].provenance.source_turn_ids) == {"t1", "t2", "t3"}   # grounded in all three
+    # the atomic facts survive (additive) — plain recall of any one is unaffected
+    assert sum(1 for p in comp.store.pages() if p.kind == "fact") == 3
+
+
+def test_empty_arc_is_not_promoted():
+    comp = _comp(_EmptyArcModel())
+    _evolving_thread(comp)                # a real supersedes chain exists...
+    assert _arcs(comp) == []              # ...but nothing groundable came back -> no blank arc page

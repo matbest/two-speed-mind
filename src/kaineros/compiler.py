@@ -62,6 +62,11 @@ class Compiler:
         # Off by default until measured (like summarise); `self.arc_model` provides `.arc()`.
         self.arc_model = None
         self.arc_enabled = False
+        # a same-tag cluster is an evolving THREAD worth an arc when it has >= arc_min facts (a
+        # real progression, not a pair) and <= arc_max (so a broad topic — all 62 "music" pages —
+        # isn't crushed into one mega-narrative). Tunable; mirrors summarise_min/max.
+        self.arc_min = 3
+        self.arc_max = 8
         # genes changed (promoted/re-promoted) since the last CLEANUP pass. Cleanup runs on a
         # cadence, but promotion happens every pass — so a page promoted on a rank-only pass must
         # wait here to get its eager cross-check at the next cleanup, or it slips through the
@@ -382,58 +387,92 @@ class Compiler:
         return 1
 
     def _arc(self) -> int:
-        """Narrate each EVOLVING thread into one arc page beside the facts (spec §51). A thread is a
-        fact gene whose pool holds an update chain — a deliberate `supersedes` allele over ≥1 older
-        one — i.e. a preference that CHANGED, which is exactly what the narrative probes ask about.
+        """Narrate each EVOLVING thread into one arc page beside the facts (spec §51) — the
+        narrative the probes ask about ("why did you change?", "how did it evolve?"). Two ways a
+        thread shows up, because the extractor fragments an evolution in two shapes:
 
-        The model only phrases (an `ArcDraft` of gist + beats); the CODE grounds it: it keeps only
-        beats traceable to a real source fact (so an invented "because" is dropped, never the
-        model's word for it), and builds the arc's provenance from the facts themselves. Idempotent
-        — an arc whose source turns already match the thread is left alone, so a settled mind makes
-        no arc changes and grooming converges. Returns the number built/rebuilt this pass.
+        - a **supersedes chain**: one gene whose pool holds a deliberate update over an older allele;
+        - a **same-tag cluster across time**: several DISTINCT genes sharing a tag, stated at
+          different times (where the real PersonaMem evolutions live — "started/grew/stopped the
+          podcast" get three keys, never one chain).
+
+        The model only phrases (an `ArcDraft`); the CODE grounds it (`_build_arc` keeps only beats
+        traceable to a real fact, builds provenance from the facts) and REFUSES an empty arc.
+        Idempotent — an arc whose source turns already match its thread is left alone — so a settled
+        mind makes no arc changes and grooming converges. Returns the number built/rebuilt.
         """
-        from .runtime import _tokens  # the routing tokeniser — grounds beats the same way retrieval
-
         built = 0
+        seen: set[str] = set()
+
+        # source 1 — single-gene supersedes chains
         for gene in list(self.store.pool):
             page = self.store.clean.get(gene)
             if page is None or page.kind == "arc":
                 continue  # only a promoted FACT seeds an arc — never an arc of an arc
             chain = self.store.pool.get(gene, [])
-            # the evolving-thread signal: >1 allele and the promoted top is a deliberate update
             if len(chain) < 2 or not any(c.provenance.supersedes for c in chain):
                 continue
-            ordered = sorted(chain, key=lambda c: c.provenance.created_at)  # oldest → newest
             arc_gene = f"{gene}.arc"
-            turn_ids = tuple(t for c in ordered for t in c.provenance.source_turn_ids)
-            existing = self.store.clean.get(arc_gene)
-            if existing is not None and set(existing.provenance.source_turn_ids) == set(turn_ids):
-                continue  # already reflects this thread → nothing to do (keeps grooming settled)
+            seen.add(arc_gene)
+            built += self._build_arc(arc_gene, sorted(chain, key=lambda c: c.provenance.created_at))
 
-            draft = self.arc_model.arc([c.content for c in ordered])
-            fact_tokens: set[str] = set()
-            for c in ordered:
-                fact_tokens |= _tokens(c.content)
-            grounded = [b for b in draft.beats if _tokens(b) & fact_tokens]  # drop the ungrounded
-            content = " ; ".join(grounded)
-            tags = tuple(dict.fromkeys(t for c in ordered for t in c.tags))
-            prov = replace(
-                ordered[0].provenance,
-                source_turn_ids=turn_ids,
-                source_texts=tuple(x for c in ordered for x in c.provenance.source_texts),
-                created_at=ordered[0].provenance.created_at,
-            )
-            self.store.pool[arc_gene] = [
-                Candidate(gene=arc_gene, content=content, gist=draft.gist, tags=tags,
-                          provenance=prov, kind="arc")
-            ]
-            self.store.clean[arc_gene] = Page(
-                gene=arc_gene, content=content, provenance=prov, tags=tags, gist=draft.gist,
-                kind="arc",
-                rank_history=[{"at": time.time(), "event": f"arc of {len(ordered)} beats"}],
-            )
-            built += 1
+        # source 2 — same-tag clusters that span time (the multi-gene evolutions §51)
+        by_tag: dict[str, list[Page]] = {}
+        for page in self.store.clean.values():
+            if page.kind == "arc":
+                continue
+            for t in page.tags:
+                by_tag.setdefault(t, []).append(page)
+        for tag, pages in by_tag.items():
+            if not (self.arc_min <= len(pages) <= self.arc_max):
+                continue  # too few to be a thread, or a whole broad topic — not one arc
+            if len({p.provenance.created_at for p in pages}) < 2:
+                continue  # co-temporal facts aren't an evolution — that's summarise's job, not arc's
+            arc_gene = f"user.{re.sub(r'[^a-z0-9]+', '_', tag.lower())}.arc"
+            if arc_gene in seen:
+                continue
+            seen.add(arc_gene)
+            built += self._build_arc(arc_gene, sorted(pages, key=lambda p: p.provenance.created_at))
         return built
+
+    def _build_arc(self, arc_gene: str, ordered: list) -> int:
+        """Ground the model's narration of one ordered thread and promote it as an arc page beside
+        the facts. `ordered` is oldest-first Candidates or Pages (both carry content/provenance/tags).
+        Returns 1 if an arc was built/rebuilt, 0 if skipped (already current, or nothing groundable).
+        """
+        from .runtime import _tokens  # the routing tokeniser — grounds beats as retrieval matches
+
+        turn_ids = tuple(t for c in ordered for t in c.provenance.source_turn_ids)
+        existing = self.store.clean.get(arc_gene)
+        if existing is not None and set(existing.provenance.source_turn_ids) == set(turn_ids):
+            return 0  # already reflects this thread → nothing to do (keeps grooming settled)
+
+        draft = self.arc_model.arc([c.content for c in ordered])
+        fact_tokens: set[str] = set()
+        for c in ordered:
+            fact_tokens |= _tokens(c.content)
+        grounded = [b for b in draft.beats if _tokens(b) & fact_tokens]  # drop the ungrounded
+        if not grounded:
+            return 0  # the empty-arc guard: no groundable beat → don't pollute the wiki with a blank
+
+        content = " ; ".join(grounded)
+        tags = tuple(dict.fromkeys(t for c in ordered for t in c.tags))
+        prov = replace(
+            ordered[0].provenance,
+            source_turn_ids=turn_ids,
+            source_texts=tuple(x for c in ordered for x in c.provenance.source_texts),
+            created_at=ordered[0].provenance.created_at,
+        )
+        self.store.pool[arc_gene] = [
+            Candidate(gene=arc_gene, content=content, gist=draft.gist, tags=tags,
+                      provenance=prov, kind="arc")
+        ]
+        self.store.clean[arc_gene] = Page(
+            gene=arc_gene, content=content, provenance=prov, tags=tags, gist=draft.gist,
+            kind="arc",
+            rank_history=[{"at": time.time(), "event": f"arc of {len(ordered)} beats"}],
+        )
+        return 1
 
     def _bubble(self, gene: str, pool: list[Candidate]) -> int:
         """One ranking pass (spec §49): compare each ADJACENT pair once and bubble the better one
