@@ -56,6 +56,8 @@ class Candidate:
     gist: str = ""                      # the bare ANSWER the gene resolves to (spec §48): gene =
                                         # the question, gist = the value ("japanese") — a terse
                                         # form the fast brain reads without parsing a sentence
+    kind: str = "fact"                  # "fact" (an atomic allele) | "arc" (a synthesised narrative
+                                        # of one evolving thread, spec §51) — arcs sit BESIDE facts
 
 
 @dataclass
@@ -67,6 +69,20 @@ class Page:
     rank_history: list = field(default_factory=list)  # timestamped rank estimates (auditability)
     tags: tuple[str, ...] = ()          # inherited from the winning allele (spec §44)
     gist: str = ""                      # the bare answer, inherited from the winner (spec §48)
+    kind: str = "fact"                  # "fact" | "arc" (spec §51) — arcs layer over facts, never
+                                        # replace them; recall routing can prefer facts, why/how-did-
+                                        # it-change routing can prefer arcs
+
+
+@dataclass
+class ArcDraft:
+    """The deep model's narration of one evolving thread (spec §51): the gist ("initially X → now Y")
+    and the ordered beats. The MODEL only phrases — the compiler grounds it, keeping only beats
+    traceable to a real source fact and building provenance from those facts, before promoting an arc
+    Page. So the words come from the model; the reason it's trusted comes from state (the one
+    principle)."""
+    gist: str = ""
+    beats: list[str] = field(default_factory=list)
 
 
 @dataclass
