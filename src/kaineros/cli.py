@@ -1225,10 +1225,17 @@ def main(argv: list[str] | None = None) -> int:
             from .claude_cli import DEEP_MODEL as CLI_DEEP
             from .claude_cli import ClaudeCLIJudge, ClaudeCLISlowModel
             from .claude_cli import preflight as cli_preflight
-            from .openrouter import FREE_FAST_MODEL, OpenRouterFastModel, ensure_key
+            from .openrouter import FAST_MODEL, FREE_FAST_MODEL, OpenRouterFastModel, ensure_key
             from .openrouter import preflight as or_preflight
 
-            fast = next((a.split("=", 1)[1] for a in args if a.startswith("--fast=")), FREE_FAST_MODEL)
+            # The fast brain ANSWERS on the interactive path, so it must be a fast, NON-reasoning
+            # model — that's the whole point of the fast role. A reasoning model (like the free
+            # nemotron-nano) leaks chain-of-thought and rambles instead of committing an answer,
+            # measurably tanking scores. So default to Haiku 4.5 (fast, non-reasoning; cents on
+            # OpenRouter). `--fast=<model>` points it at a specific model (e.g. a local stand-in);
+            # `--fast=free` opts INTO the free reasoning tier (expect weaker answers).
+            fast_arg = next((a.split("=", 1)[1] for a in args if a.startswith("--fast=")), None)
+            fast = FREE_FAST_MODEL if fast_arg == "free" else (fast_arg or FAST_MODEL)
             cli_preflight()  # proves the binary + login before we accept any turns
             ensure_key()
             or_preflight(fast)  # RateLimitedError → the countdown loop waits it out
@@ -1239,7 +1246,9 @@ def main(argv: list[str] | None = None) -> int:
             s.runtime.model = OpenRouterFastModel(fast, meter=s.fast_meter)
             s.cloud = True
             s.backend_label = "DEBUG - CLOUD"
-            detail = "free" if fast == FREE_FAST_MODEL else fast.split("/")[-1] + " (local stand-in)"
+            detail = ("Haiku 4.5" if fast == FAST_MODEL
+                      else "free (reasoning - weaker)" if fast == FREE_FAST_MODEL
+                      else fast.split("/")[-1] + " (stand-in)")
             s.backend_detail = f"Claude sub ({CLI_DEEP}) + OpenRouter {detail}"
             s.offdevice = True
             return s
