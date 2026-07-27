@@ -351,6 +351,21 @@ preference-evolution toward the raw-context baseline while the additive rule kee
 Optional follow-up: an adversarial verify pass (a second deep call that must confirm each "because"
 against the sources before promotion).
 
+Prior art (checked 2026-07-27 — the idea is NOT novel; this is us catching up to the temporal-memory
+frontier, position on local-first/private/human-readable, don't claim invention):
+- **TraceMem** ("Weaving Narrative Memory Schemata from User Conversational Traces", arXiv 2602.09712)
+  independently chose our exact three rules — offline construction, ADDITIVE (schemas coexist with
+  raw facts), grounded by trace provenance. Convergent validation the shape is sound.
+- **Zep/Graphiti** (arXiv 2501.13956) does temporal memory as a bi-temporal knowledge graph (edges
+  with validity windows): strong (DMR 94.8%, LongMemEval +18.5% acc / −90% latency) but heavy and
+  non-inspectable — cloud infra, needs a graph DB. We deliberately SKIP the graph: arc page + tags +
+  the index router is the lightweight, human-readable equivalent, and we already have the retrieval.
+- Steal into the content FORMAT: dated, semi-structured beats ("2018: a chore → 2020: mentor
+  reframed it → now: enjoys it"), not free prose — buys Zep's temporal queryability while staying
+  grounded and inspectable. Zep's invalidate-don't-delete we already do (losing candidates survive
+  in the pool). Also: sleep-time compute (Letta) is the same offline-consolidation move by another
+  name — the metaphor is established, not ours.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

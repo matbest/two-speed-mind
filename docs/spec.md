@@ -400,8 +400,8 @@ This prototype proves the *architecture* — with the model faked — as a comma
     it dreams while it sleeps: it takes a *thread* of the user's life that has temporal structure (a
     `supersedes` chain on one gene, or a same-tag cluster whose facts span several time points) and
     distils it into ONE dense **arc page** — gist `"initially X → now Y, because Z"`, content the
-    ordered beats and their stated reasons, tags the vocabulary a *why/how-did-it-change* question
-    uses. Then the fast brain retrieves a pre-built story instead of reassembling scraps, and the
+    ordered, *dated-where-known* beats and their stated reasons ("2018: a chore → 2020: a mentor
+    reframed it → now: enjoys it"), tags the vocabulary a *why/how-did-it-change* question uses. Then the fast brain retrieves a pre-built story instead of reassembling scraps, and the
     expensive narrative reasoning is paid **once, offline** — not on every query the way raw context
     re-derives it. Two rules make it safe and distinct:
     - **Additive, not destructive** — unlike summarise (§50, which merged *distinct* facts by shared
