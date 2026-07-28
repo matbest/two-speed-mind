@@ -141,6 +141,14 @@ html, body {
   white-space: pre-wrap;
 }
 .msg.typing { color: var(--muted); font-style: italic; }
+.resp-time {
+  margin-top: 5px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  opacity: 0.75;
+}
 
 .composer {
   display: flex;

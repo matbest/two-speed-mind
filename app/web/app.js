@@ -146,6 +146,12 @@
         w.textContent = "why · " + resp.why;
         el.appendChild(w);
       }
+      if (typeof resp.seconds === "number") {
+        var tm = document.createElement("div");
+        tm.className = "resp-time";
+        tm.textContent = resp.seconds.toFixed(1) + " seconds";
+        el.appendChild(tm);
+      }
       pending = false;
       sendBtn.disabled = false;
       speak(body.textContent);

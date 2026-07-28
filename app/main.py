@@ -138,14 +138,16 @@ class Api:
         social = _social_reply(text)
         if social is not None:  # greeting / thanks / small-talk — warm, zero model tokens
             self._log(input=text, route="social", answer=social, seconds=round(time.time() - t0, 2))
-            return {"answer": social, "why": "", "abstained": False, "streamed": False}
+            return {"answer": social, "why": "", "abstained": False, "streamed": False,
+                    "seconds": round(time.time() - t0, 2)}
 
         if _looks_like_statement(text) and not _is_question(text):  # a told fact — store + ack
             resp = self._session.turn(text)
             self._log(input=text, route="statement", answer=resp.answer,
                       seconds=round(time.time() - t0, 2))
             return {"answer": resp.answer, "why": resp.why,
-                    "abstained": bool(getattr(resp, "abstained", False)), "streamed": False}
+                    "abstained": bool(getattr(resp, "abstained", False)), "streamed": False,
+                    "seconds": round(time.time() - t0, 2)}
 
         # a query (question or bare topic) — step-by-step search, streamed
         resp, reads = None, []
@@ -163,7 +165,8 @@ class Api:
                   abstained=(bool(resp.abstained) if resp else False),
                   seconds=round(time.time() - t0, 2))
         return {"answer": resp.answer if resp else "", "why": resp.why if resp else "",
-                "abstained": bool(resp.abstained) if resp else False, "streamed": True}
+                "abstained": bool(resp.abstained) if resp else False, "streamed": True,
+                "seconds": round(time.time() - t0, 2)}
 
     def _push(self, ev: dict) -> None:
         """Push a SearchEvent to the frontend's window.onSearch (best-effort)."""
