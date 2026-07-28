@@ -425,6 +425,22 @@ chat; the `token` stream fills the chat bubble progressively and drives sentence
 Later: measure real TTFT + tokens/sec once a local model is wired, and tune `max_hops` against the
 latency budget (the accuracy-vs-hops curve is the number that matters, not the frontier gap).
 
+**T25. Answer at speech pace — narrative sub-tier + search-behind-voice (spec §53)**  ·  after T24
+
+Builds on T23 (arc synthesis) + T24 (step-by-step search). Two parts:
+- **Narrative sub-tier**: promote the deep brain's arcs (§51) as sub-files hanging off a fact page
+  (`<gene>.arc.md` / a `narrative/` subfolder), LINKED but NOT in the router's recall index — so they
+  never compete with facts in routing (the fix for T23's saturation failure). A search hop (§52)
+  opens one only when it deliberately dives for the story.
+- **Speak-first pipeline**: the streaming `respond` (§52) emits a first sentence from the FACT wiki
+  immediately (time-to-first-sentence is the KPI, not time-to-full-answer); while the app speaks it
+  (~5s of TTS), the search digs the narrative sub-tier for the next sentence, and streams it in behind
+  the voice. Pipeline sentence N's speech against N+1's search. Seam contract: sentence 1 is
+  fact-plain and safe (never reversed by the narrative); later sentences elaborate, never contradict.
+  Needs: the app to run TTS and the next-sentence search concurrently, and a sentence-at-a-time
+  streaming shape from the engine. Measure: time-to-first-sentence, and whether the search stays
+  hidden behind playback. Test the seam contract on fakes; the concurrency lives app-side.
+
 ## Later (from the paper's §9 — not yet)
 
 Closing the **freshness gap** (spec §16) — retrieval over the un-compiled buffer and the pools'

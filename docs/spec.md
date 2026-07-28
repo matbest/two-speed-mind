@@ -458,4 +458,41 @@ This prototype proves the *architecture* — with the model faked — as a comma
     the implicit; the search picks whichever the question needs. That's how you get raw-context
     *accuracy* at compiled-memory *latency* — the whole point of the two-speed bet.
 
+**Answer at speech pace: narrative as a dug-into sub-tier, searched behind the voice (§53)**
+53. The PersonaMem study taught two things at once: a small model reading the compiled facts is
+    *fast but shallow* (loses the narrative — why a preference changed, how it evolved), and reading
+    the raw history is *accurate but ~25s/answer* — unusable. And the arc experiment (§51) failed for
+    a specific reason: the narratives were promoted as ordinary pages that **competed with the facts
+    in retrieval**, flooding the top-K and dropping recall. §53 resolves all three with one shape,
+    built for the fact that the assistant *talks*.
+
+    **Narrative is a separate sub-tier, not an indexed page.** The deep brain's arcs (§51) live as
+    sub-files hanging off a fact page — `user.music_theory.md` is the fact; `user.music_theory.arc.md`
+    (or a `narrative/` subfolder) holds the evolution story — **linked, but NOT in the router's index
+    for normal recall**. So the fast brain answers from clean facts by default and the narrative never
+    clutters routing; it is opened only when a search hop (§52) deliberately *dives* for the story a
+    question needs. This is the fix that revives arc synthesis: the arcs were fine, their *placement*
+    was wrong.
+
+    **Answer at speech pace — the first sentence is the only thing that must be fast.** Because the
+    face reads answers aloud, speech itself buys time: TTS runs ~2.5 words/sec, so a ~12-word sentence
+    is ~5s of talking, while a narrative search hop is ~1–2s. So the fast brain gives an immediate
+    first sentence from the fact wiki (first word ~1.4s), and **while the face speaks it, it searches
+    the narrative sub-tier for the next sentence** — the search cost hides entirely behind the voice.
+    Pipeline: speak sentence *N* while composing *N+1*. This reframes the latency KPI from
+    *time-to-full-answer* to **time-to-first-sentence**, and a ~20-tok/s local model stops being a
+    wall — generation and search overlap playback. It composes with §52's streams: the face speaks
+    sentence 1, flicks its gaze up-left on the `reading` events as it digs, and continues seamlessly —
+    thinking made visible and audible, never a frozen spinner.
+
+    **The seam contract (so it stays honest and coherent):** sentence 1 answers *plainly and
+    generally from facts* and must be safe — it never commits to something the narrative will reverse
+    ("you prefer X" when the story is "…switched from X to Y"); the narrative sentences *elaborate*
+    (add the why and the history), they don't contradict. Grounding is unchanged (§principle): facts
+    and narrative are both real state — the model phrases each; it decides neither. Two risks to hold:
+    coherence across the fact→narrative seam, and the quality of the deep brain's arcs (some came back
+    thin — §51's synthesis quality matters again). Together this is the synthesis the study pointed
+    to: **fact answer first for speed, narrative behind the speech for depth — raw-context accuracy at
+    responsive latency.**
+
 See `docs/plan.md` for the components and `docs/tasks.md` for the build order.
