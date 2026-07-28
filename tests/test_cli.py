@@ -80,3 +80,32 @@ def test_repl_smoke(monkeypatch, capsys, tmp_path):
     assert "bye." in out
     assert (tmp_path / "pool.json").exists()              # the mind hit disk (spec §22)
     assert (tmp_path / "kainome" / "bananas.md").exists() # and the wiki rendered
+
+
+def test_social_reply_matches_greetings_but_never_swallows_a_question():
+    from kaineros.cli import _social_reply
+    # pure social turns -> a warm canned reply
+    assert _social_reply("hi there") == "Hi — what can I help you with?"
+    assert _social_reply("hello!") is not None
+    assert _social_reply("thanks so much") == "Anytime — that's what I'm here for."
+    assert _social_reply("goodnight") == "Talk soon."
+    assert _social_reply("what can you do?") is not None
+    # a REAL question that merely opens with a greeting word must fall through, not be swallowed
+    assert _social_reply("hey what do I like?") is None
+    assert _social_reply("what is my home city?") is None
+    assert _social_reply("I live in Berlin") is None
+
+
+def test_greeting_turn_is_warm_zero_tokens_and_unstored():
+    s = Session()
+    resp = s.turn("hi there")
+    assert resp.answer == "Hi — what can I help you with?"   # warm, not a cold "OK"
+    assert resp.used == []                                    # no retrieval
+    assert len(s.buffer) == 0                                 # nothing stored — "hi" is no fact
+
+
+def test_a_real_statement_still_acks_and_stores():
+    s = Session()  # background=False: synchronous
+    resp = s.turn("I live in Berlin")
+    assert resp.answer == "OK"                                # fact-statements are unchanged
+    assert any("Berlin" in t.text for t in s.buffer)          # and buffered for the deep brain

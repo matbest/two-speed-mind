@@ -10,6 +10,7 @@ tail is handed to the slow model — a turn is extracted exactly once, ever.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 import time
@@ -67,6 +68,38 @@ def _is_question(text: str) -> bool:
     if t.endswith("?"):
         return True
     return t.split()[0].strip(",.'\"") in _Q_WORDS
+
+
+# Social turns — greetings, thanks, farewells, "how are you", "what can you do" — get a warm,
+# DETERMINISTIC reply: a personal-assistant feel at ZERO model tokens (nothing to retrieve or store).
+# Each pattern FULL-MATCHES (^…$), so a real question that merely opens with a greeting word
+# ("hey what do I like?") is NOT swallowed — it falls through to the normal question path.
+_SOCIAL = (
+    (re.compile(r"^\s*(thanks?|thank you|thankyou|cheers|ta|thx|much appreciated|appreciate it)"
+                r"( so much| very much| a lot| heaps| mate)?[\s!.,'-]*$", re.I),
+     "Anytime — that's what I'm here for."),
+    (re.compile(r"^\s*(bye|goodbye|see (you|ya|u)|good ?night|night( night)?|cya|later|"
+                r"catch you later|talk (to you )?later)[\s!.,'-]*$", re.I),
+     "Talk soon."),
+    (re.compile(r"^\s*(what can you do|what do you do|who are you|what are you|help|"
+                r"how do you work|what are you for)[\s?!.,'-]*$", re.I),
+     "I'm your memory — I keep what matters about you and answer from it. "
+     "Ask me anything, or just tell me something to remember."),
+    (re.compile(r"^\s*(how('?s| is| are)( it going| things| you( doing)?| your day)?|"
+                r"what'?s up|whats up|sup|how you doing|you (ok|good|alright))[\s?!.,'-]*$", re.I),
+     "Doing well and ready to help. What's on your mind?"),
+    (re.compile(r"^\s*(hi|hello|hey|yo|hiya|howdy|hallo|greetings|good (morning|afternoon|evening))"
+                r"( there| everyone| all| you)?[\s!.,'-]*$", re.I),
+     "Hi — what can I help you with?"),
+)
+
+
+def _social_reply(text: str) -> str | None:
+    """A warm canned reply for a pure social turn, or None if it's real (a question or a fact)."""
+    for pattern, reply in _SOCIAL:
+        if pattern.match(text):
+            return reply
+    return None
 
 
 class Session:
@@ -218,6 +251,13 @@ class Session:
             self._asked.status = "answered"
             self._asked.answered_at = time.time()
         self._asked = None
+        # a pure social turn (greeting, thanks, farewell, small-talk) — warm, deterministic, ZERO
+        # model tokens, and NOT stored (there's no lasting fact in "hi there"). Only real questions
+        # and statements go through the brains below.
+        social = _social_reply(text)
+        if social is not None:
+            self.last_response = Response(answer=social, why="social - nothing to retrieve or store", used=[])
+            return self.last_response
         self.buffer.append(Turn(text=text, speaker="user", created_at=time.time()))
         if self.background:
             self._wake.set()  # the answer never waits for the slow brain (spec §24)
