@@ -236,6 +236,14 @@
       userEl.textContent = "user";
     }
 
+    // truthful backend footer (which models are actually wired, the profile, and page count)
+    var footEl = document.getElementById("side-foot");
+    if (footEl && window.pywebview && window.pywebview.api && window.pywebview.api.status) {
+      Promise.resolve(window.pywebview.api.status()).then(function (st) {
+        if (st) footEl.textContent = st.label + " · " + st.profile + " · " + st.pages + " pages";
+      });
+    }
+
     addMessage("bot", "Hi — I'm Kaineros. Ask me anything, or tell me something to remember.", "");
   }
 

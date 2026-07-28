@@ -113,6 +113,18 @@ class Api:
         """The OS user shown in the sidebar header."""
         return current_user()
 
+    def status(self) -> dict:
+        """A truthful footer label: which backend + models are actually wired, and the mind size."""
+        s = self._session
+        if getattr(s, "cloud", False):
+            deep = getattr(getattr(s, "slow", None), "model", "?")
+            fast = str(getattr(getattr(s.runtime, "model", None), "model", "?")).split("/")[-1]
+            label = f"{deep} · {fast}"
+        else:
+            label = "offline · deterministic fakes"
+        return {"label": label, "profile": getattr(s, "profile_name", "default"),
+                "pages": len(s.store.pages())}
+
     def _log(self, **rec) -> None:
         if self._logpath is None:
             return
