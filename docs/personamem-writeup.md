@@ -31,7 +31,7 @@ Three ways to answer the same multiple-choice questions, scored the same way:
 
 | Setup | Reads | Accuracy | Tokens/answer | Latency |
 |---|---|---:|---:|---:|
-| **Kaineros (Haiku)** | compiled wiki | **0.41** | ~490 | fast |
+| **Kaineros (Haiku)** | compiled wiki | **0.41** | ~490 | ~1.4s |
 | Haiku | raw history | 0.50 | ~8,500 | ~28s |
 | Opus | raw history | 0.67 | ~9,400 | ~28s |
 
@@ -39,7 +39,7 @@ Three ways to answer the same multiple-choice questions, scored the same way:
 
 | Setup | Reads | Accuracy | Tokens/answer | Latency |
 |---|---|---:|---:|---:|
-| **Kaineros (Haiku)** | compiled wiki | **0.61** | ~520 | fast |
+| **Kaineros (Haiku)** | compiled wiki | **0.61** | ~520 | ~1.6s |
 | Haiku | raw history | 0.73 | ~14,300 | ~23s |
 | Opus | raw history | 0.78 | ~18,600 | ~23s |
 

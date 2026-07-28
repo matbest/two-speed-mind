@@ -1414,7 +1414,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         try:
+            f0, t0 = session.fast_meter.total, time.time()
             resp = _timed(lambda: session.turn(line), show=sys.stdout.isatty())
+            dt, ftok = time.time() - t0, session.fast_meter.total - f0
         except KeyboardInterrupt:
             print("\n  (cancelled - that turn was abandoned; it will be re-read next time)")
             continue
@@ -1426,6 +1428,9 @@ def main(argv: list[str] | None = None) -> int:
         elif console is not None:
             _print_cockpit(console, session)  # console can't pin: panels print inline
         print("mind> " + resp.answer)
+        # how quick + which pages it read — so you can poke a mind live and see its speed
+        used = f" · read {len(resp.used)} page(s)" if getattr(resp, "used", None) else ""
+        print(f"      ({dt:.1f}s{f' · {ftok} fast tok' if session.cloud else ''}{used})")
         q = session.take_question()  # the mind asks a queued disambiguation, if any (spec §38)
         if q is not None:
             print("mind? " + q.text)
