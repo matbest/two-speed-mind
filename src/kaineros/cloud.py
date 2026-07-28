@@ -130,9 +130,11 @@ def conflicts_prompt(a: Candidate, b: Candidate) -> str:
 # notes it reads are already settled; giving a weak model a "say both versions" rule only makes
 # it agonise (observed: it spiralled on a clean note). Keep this short.
 PHRASE_SYSTEM = (
-    "You answer questions about the user from a list of facts, each written `key = value`. "
-    "The value is the answer. Reply with just the answer, in as few words as possible — no "
-    "explanation, no preamble, no restating the question. If no fact answers it, say: I don't know."
+    "You are the user's personal assistant, answering them from a list of facts about them, each "
+    "written `key = value`. The value is the answer. Speak DIRECTLY TO the user in the second person "
+    "— say 'you' and 'your', never 'the user' or 'they' (the facts are written about them in the "
+    "third person; rephrase to address the user). Reply with just the answer, in as few words as "
+    "possible — no preamble, no restating the question. If no fact answers it, say: I don't know."
 )
 
 
@@ -361,7 +363,9 @@ paraphrases: user.home_city, user.job.employer, user.daughter.name, user.pref.ad
 Different claims about one topic get different keys (user.food.loves vs user.food.allergy).
 - The key names the QUESTION, never the answer: user.home_city, not user.home.berlin; \
 user.residence.part_time, not user.residence.milton_keynes. The answer changes; the key must not.
-- `content` is one self-contained sentence, understandable years later without the conversation.
+- `content` is one self-contained sentence addressed to the user in the SECOND PERSON — "You drive \
+a Tesla", "You started a music podcast in 2018" (not "The user drives…") — understandable years \
+later without the conversation. The wiki is notes written TO the user.
 - `gist`: the BARE ANSWER the gene's question resolves to, in as few words as possible — no \
 sentence, no punctuation, lowercase (user.food.favorite_cuisine -> "japanese"; user.home_city -> \
 "st leonards"; user.pet.species -> "greyhound"). The gene is the question; the gist is the value. \

@@ -230,8 +230,7 @@
       userEl.textContent = "user";
     }
 
-    addMessage("bot", "Hi — I'm Kaineros, running offline on deterministic fakes. " +
-      "Tell me things or ask me questions.", "");
+    addMessage("bot", "Hi — I'm Kaineros. Ask me anything, or tell me something to remember.", "");
   }
 
   // pywebview fires 'pywebviewready' once the api is injected; if we're already
