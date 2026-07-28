@@ -32,6 +32,7 @@ HELP = (
     "  /help      show this\n"
     "  /notebook  show the kainome (promoted pages - the clean knowledge base)\n"
     "  /wiki      open the kainome on disk (a clickable link to the Markdown wiki)\n"
+    "  /search    watch the fast brain browse the wiki step by step: /search <question>\n"
     "  /why       the grounded reason behind the last answer\n"
     "  /questions the disambiguation questions the mind has queued to ask\n"
     "  /cleanup   force the deep brain's cross-page cleanup now (fusion + conflict check)\n"
@@ -531,6 +532,35 @@ def _wait_for_reset(console, vt_ok: bool, reset_at: float) -> bool:
     except KeyboardInterrupt:
         print()
         return False
+
+
+def _cmd_search(session: Session, args: list[str]) -> None:
+    """/search <question> — watch the fast brain browse the wiki step by step (spec §52): each page
+    it opens prints as a `reading` hop, then the answer streams in token by token."""
+    q = " ".join(args).strip()
+    if not q:
+        print("  usage: /search <question>   (it opens pages hop by hop, then answers)")
+        return
+    t0 = time.time()
+    hops, streaming, resp = 0, False, None
+    for ev in session.runtime.search(q, session.buffer):
+        if ev.kind == "reading":
+            hops = ev.hop
+            print(f"  reading ({ev.hop}) {'raw snippet' if ev.raw else 'page'}: {ev.gene}")
+        elif ev.kind == "token":
+            if not streaming:
+                print("  mind> ", end="", flush=True)
+                streaming = True
+            print(ev.text, end="", flush=True)
+        elif ev.kind == "done":
+            resp = ev.response
+    if streaming:
+        print()  # end the streamed line
+    elif resp is not None:
+        print("  mind> " + resp.answer)  # abstained: no tokens
+    if resp is not None:
+        session.last_response = resp
+    print(f"        ({time.time() - t0:.1f}s · {hops} hop(s))")
 
 
 def _cmd_wiki(session: Session) -> None:
@@ -1417,6 +1447,8 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  [{p.gene}] {p.content}")
             elif cmd == "/wiki":
                 _cmd_wiki(session)
+            elif cmd == "/search":
+                _cmd_search(session, line.split()[1:])
             elif cmd == "/why":
                 why = session.last_response.why if session.last_response else "(no answer yet)"
                 print("  " + why)
