@@ -1,6 +1,6 @@
 # Compiled memory vs. raw context: does a wiki help a small model remember you?
 
-*A finding, not a boast. Two-Speed Mind / Kaineros — internal study, PersonaMem v1 & v2, July 2026.*
+*Two-Speed Mind / Kaineros — internal study, PersonaMem v1 & v2, July 2026.*
 *Rendered version: https://claude.ai/code/artifact/b58e6ab0-9282-45e7-8547-b44bdaa6a490*
 
 **Kaineros** compiles your conversations into a readable knowledge wiki, then answers with a small,
@@ -12,8 +12,8 @@ whether the wiki makes a small model better — and whether it's fast enough to 
 
 On our 32k slices, a small model was **more accurate reading the raw history than the compiled wiki**
 — on *both* benchmarks (v1: 0.73 vs 0.61; v2: 0.50 vs 0.41). The wiki isn't an accuracy win; it's a
-**speed, cost, and privacy** win. Reading the raw history took **~23–28 seconds per answer** (a
-spinner, not an assistant), while the wiki answers fast, ~20–40× cheaper, and never leaves the
+**speed, cost, and privacy** win. Reading the raw history took **~23–28 seconds per answer** — far too slow to feel responsive —
+while the wiki answers fast, ~20–40× cheaper, and never leaves the
 machine. It holds up on plain fact recall but loses where the answer needs the raw *narrative* (why a
 preference changed, how it evolved) or an implicit detail — because compiling flattens exactly those.
 The fix: let the fast search reach raw snippets on demand — raw-context accuracy at wiki speed.
@@ -46,10 +46,10 @@ Three ways to answer the same multiple-choice questions, scored the same way:
 The same pattern both times: the same small model is more accurate on the raw history (0.73, 0.50)
 than on the compiled wiki (0.61, 0.41). The wiki trades accuracy for speed.
 
-## Reading it honestly
+## Reading the results
 
-**The wiki loses to the raw history on accuracy — consistently, not by task.** The tidy "helps
-explicit, hurts implicit" story didn't survive the data: the small model was more accurate on raw
+**The wiki was less accurate than raw history on both benchmarks — consistently, not by task.** The
+explicit-vs-implicit split we expected did not appear: the small model was more accurate on raw
 history on both slices. Where the wiki loses is *type*, not benchmark — it holds up on plain fact
 recall but drops the questions that need the raw **narrative**: on v1, reasons-behind-a-change (9/14
 vs 13/14) and evolution (2/4 vs 4/4); on v2, implicit details like health (0.47 vs 0.82) and
@@ -59,8 +59,8 @@ answers live in.
 **But raw context isn't a usable assistant.** Every raw-history setup cost ~23–28s/answer — the model
 must *read* tens of thousands of tokens before writing a word (the prefill). Kaineros reads a few
 hundred tokens of wiki and answers fast. On time-to-first-word — the metric that decides whether
-something feels like an assistant — raw context loses outright. The honest trade: the wiki gives up
-~10 points of accuracy to be the only responsive, cheap, and private option.
+something feels like an assistant — raw context loses outright. The trade-off: the wiki gives up
+roughly ten points of accuracy to be the only responsive, low-cost, and private option.
 
 ## What it points to
 
