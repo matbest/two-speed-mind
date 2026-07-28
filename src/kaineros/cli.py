@@ -31,6 +31,7 @@ BANNER = (
 HELP = (
     "  /help      show this\n"
     "  /notebook  show the kainome (promoted pages - the clean knowledge base)\n"
+    "  /wiki      open the kainome on disk (a clickable link to the Markdown wiki)\n"
     "  /why       the grounded reason behind the last answer\n"
     "  /questions the disambiguation questions the mind has queued to ask\n"
     "  /cleanup   force the deep brain's cross-page cleanup now (fusion + conflict check)\n"
@@ -530,6 +531,27 @@ def _wait_for_reset(console, vt_ok: bool, reset_at: float) -> bool:
     except KeyboardInterrupt:
         print()
         return False
+
+
+def _cmd_wiki(session: Session) -> None:
+    """/wiki — a clickable link to the kainome on disk (the Markdown wiki), and open it."""
+    if session.store_dir is None:
+        print("  (this mind lives in memory only — no wiki on disk)")
+        return
+    kainome = Path(session.store_dir) / "kainome"
+    index = kainome / "index.md"
+    if not kainome.exists():
+        print("  (no wiki yet — nothing promoted. Tell me some things and the deep brain builds it.)")
+        return
+    target = index if index.exists() else kainome
+    print(f"  kainome: {target}")
+    print(f"           {target.as_uri()}  (ctrl+click to open)")
+    try:  # best-effort: also open it in the default app (Windows)
+        import os
+
+        os.startfile(str(target))  # noqa: S606 - opening the user's own file, on request
+    except (OSError, AttributeError):
+        pass  # not Windows, or no default handler — the printed link still works
 
 
 def _cmd_model(session: Session, args: list[str]) -> None:
@@ -1393,6 +1415,8 @@ def main(argv: list[str] | None = None) -> int:
                     print("  (empty — nothing promoted yet)")
                 for p in pages:
                     print(f"  [{p.gene}] {p.content}")
+            elif cmd == "/wiki":
+                _cmd_wiki(session)
             elif cmd == "/why":
                 why = session.last_response.why if session.last_response else "(no answer yet)"
                 print("  " + why)
