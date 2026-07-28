@@ -24,6 +24,7 @@ window.Face = (function () {
 
   // --- module state -----------------------------------------------------------
   var scene, camera, renderer, root, head, jaw, leftEye, rightEye;
+  var camDist = 5.5;                       // camera distance (zoom); scroll wheel adjusts it
   var clock;
   var container;
   var enabled = false;
@@ -136,7 +137,7 @@ window.Face = (function () {
       var w = container.clientWidth || 360;
       var h = container.clientHeight || 480;
       camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
-      camera.position.set(0, 0.1, 4.1);
+      camera.position.set(0, 0.1, camDist);
 
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(window.devicePixelRatio || 1);
@@ -149,12 +150,20 @@ window.Face = (function () {
       enabled = true;
 
       window.addEventListener("resize", _onResize);
+      container.addEventListener("wheel", _onWheel, { passive: false });  // scroll to zoom
       _loop();
       return true;
     } catch (err) {
       _fallback("WebGL init failed — face stubbed. " + (err && err.message || ""));
       return false;
     }
+  }
+
+  function _onWheel(e) {
+    e.preventDefault();                                  // don't scroll the page
+    camDist += (e.deltaY > 0 ? 1 : -1) * 0.45;           // wheel down = zoom out, up = zoom in
+    camDist = Math.max(3.0, Math.min(9.5, camDist));     // clamp so it can't fly off or clip inside
+    if (camera) camera.position.z = camDist;
   }
 
   function _onResize() {
