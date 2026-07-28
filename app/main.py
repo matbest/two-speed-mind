@@ -14,6 +14,7 @@ Run:  ``python -m app``   (from the repo root, or after ``pip install -e .``)
 from __future__ import annotations
 
 import getpass
+import json
 import os
 import sys
 from pathlib import Path
@@ -94,26 +95,52 @@ class Api:
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._window = None  # set in main() once the window exists — for pushing search events
 
     def whoami(self) -> str:
         """The OS user shown in the sidebar header."""
         return current_user()
 
     def ask(self, text: str) -> dict:
-        """Run one conversation turn through the engine and return the split result.
+        """One conversation turn. A greeting/statement returns immediately; a QUESTION runs the
+        step-by-step wiki search (spec §52), pushing `reading`/`token` events to the frontend as it
+        goes (the face's gaze-flicks + the streamed answer) and returning the final split result.
+        answer and why stay apart (the grounding principle)."""
+        from kaineros.cli import _is_question, _social_reply
 
-        The engine keeps the phrased answer and the grounded reason apart
-        (Response.answer vs Response.why); we forward both, unmixed.
-        """
         text = (text or "").strip()
         if not text:
-            return {"answer": "", "why": "", "abstained": False}
-        resp = self._session.turn(text)
-        return {
-            "answer": resp.answer,
-            "why": resp.why,
-            "abstained": bool(getattr(resp, "abstained", False)),
-        }
+            return {"answer": "", "why": "", "abstained": False, "streamed": False}
+
+        social = _social_reply(text)
+        if social is not None:  # greeting / thanks / small-talk — warm, zero model tokens
+            return {"answer": social, "why": "", "abstained": False, "streamed": False}
+        if not _is_question(text):  # a statement — stored in the background, acked
+            resp = self._session.turn(text)
+            return {"answer": resp.answer, "why": resp.why,
+                    "abstained": bool(getattr(resp, "abstained", False)), "streamed": False}
+
+        resp = None
+        for ev in self._session.runtime.search(text, self._session.buffer):
+            if ev.kind == "reading":
+                self._push({"type": "reading", "hop": ev.hop, "gene": ev.gene, "raw": ev.raw})
+            elif ev.kind == "token":
+                self._push({"type": "token", "text": ev.text})
+            elif ev.kind == "done":
+                resp = ev.response
+        if resp is not None:
+            self._session.last_response = resp
+        return {"answer": resp.answer if resp else "", "why": resp.why if resp else "",
+                "abstained": bool(resp.abstained) if resp else False, "streamed": True}
+
+    def _push(self, ev: dict) -> None:
+        """Push a SearchEvent to the frontend's window.onSearch (best-effort)."""
+        if self._window is None:
+            return
+        try:
+            self._window.evaluate_js("window.onSearch && window.onSearch(" + json.dumps(ev) + ")")
+        except Exception:  # noqa: BLE001 - a UI push must never break the answer
+            pass
 
 
 def _arg(argv: list[str], flag: str, default: str) -> str:
@@ -141,7 +168,7 @@ def main() -> int:
     print(f"[kaineros] profile '{session.profile_name}' loaded — "
           f"{len(session.store.pages())} page(s), backend={backend}")
     api = Api(session)
-    webview.create_window(
+    window = webview.create_window(
         title="Kaineros",
         url=str(INDEX_HTML),
         js_api=api,
@@ -150,6 +177,7 @@ def main() -> int:
         min_size=(900, 600),
         background_color="#0d1117",
     )
+    api._window = window  # so ask() can push search events to window.onSearch
     # gui=None lets pywebview pick the platform default (WebView2/EdgeChromium on
     # Windows). debug=True enables the WebView2 devtools (right-click → Inspect).
     webview.start(debug=bool(os.environ.get("KAINEROS_DEBUG")))

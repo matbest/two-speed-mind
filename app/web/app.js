@@ -25,6 +25,18 @@
 
   var muted = false;
   var pending = false; // a request is in flight
+  var streamingBody = null; // the bot bubble body the search streams tokens into
+  var traceEl = document.getElementById("search-trace");
+
+  // --- live search trace (spec §52): pages the fast brain opens, hop by hop ----
+  function clearTrace() { if (traceEl) traceEl.innerHTML = ""; }
+  function addTrace(hop, gene, raw) {
+    if (!traceEl) return;
+    var line = document.createElement("div");
+    line.className = "trace-line" + (raw ? " raw" : "");
+    line.textContent = "▸ " + hop + "  " + gene + (raw ? "  · raw snippet" : "");
+    traceEl.appendChild(line);
+  }
 
   // --- face-state helper: keeps the on-screen label in sync too ---------------
   function face(stateName) {
@@ -110,25 +122,58 @@
     input.value = "";
     pending = true;
     sendBtn.disabled = true;
-    face("thinking"); // request sent, awaiting response
+    clearTrace();
+    face("thinking"); // request sent — the face searches while it looks up-left
 
-    var typing = addTyping();
+    // a bot bubble the search streams tokens into (window.onSearch fills it live)
+    var el = document.createElement("div");
+    el.className = "msg bot";
+    var body = document.createElement("div");
+    el.appendChild(body);
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    streamingBody = body;
 
     Promise.resolve(callAsk(text)).then(function (resp) {
-      typing.remove();
       resp = resp || {};
-      addMessage("bot", resp.answer || "", resp.why || "", resp.abstained);
+      streamingBody = null;
+      // non-streamed turns (a greeting, a stored statement) had no tokens — fill the bubble now.
+      if (!resp.streamed || !body.textContent) body.textContent = resp.answer || "";
+      if (resp.abstained) el.classList.add("abstain");
+      if (resp.why) {
+        var w = document.createElement("div");
+        w.className = "why";
+        w.textContent = "why · " + resp.why;
+        el.appendChild(w);
+      }
       pending = false;
       sendBtn.disabled = false;
-      speak(resp.answer || "");
+      speak(body.textContent);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     }).catch(function (err) {
-      typing.remove();
-      addMessage("bot", "Error: " + (err && err.message || err), "");
+      streamingBody = null;
+      body.textContent = "Error: " + (err && err.message || err);
       pending = false;
       sendBtn.disabled = false;
       face("idle");
     });
   }
+
+  // Python pushes SearchEvents here as the step-by-step search runs (spec §52): each `reading`
+  // flicks the face's gaze to a new shelf + logs the file; each `token` streams into the bubble.
+  window.onSearch = function (ev) {
+    if (!ev) return;
+    if (ev.type === "reading") {
+      if (window.Face) window.Face.searchGlance();
+      addTrace(ev.hop, ev.gene, ev.raw);
+    } else if (ev.type === "token") {
+      if (streamingBody) {
+        streamingBody.textContent += ev.text;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    }
+    // "done" is handled when the ask() promise resolves.
+  };
 
   // --- events -----------------------------------------------------------------
   form.addEventListener("submit", function (e) {

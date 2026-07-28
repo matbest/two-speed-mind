@@ -43,6 +43,10 @@ window.Face = (function () {
     replying:  { x: 0.00, y: 0.00 },  // straight at the user
   };
 
+  // a search-hop "glance": each page the search opens flicks the gaze to a new shelf (up + left,
+  // then up + right, alternating), decaying back to the state's gaze after ~900ms.
+  var glanceX = 0, glanceY = 0, glanceUntil = 0, glanceSide = 1;
+
   // blink schedule
   var nextBlinkAt = 0;
   var blinkUntil = 0;
@@ -177,13 +181,17 @@ window.Face = (function () {
 
     // --- gaze: lerp head rotation toward the current state's target -----------
     var g = GAZE[state] || GAZE.idle;
+    var gx = g.x, gy = g.y, rate = 0.08;
+    if (now < glanceUntil) {           // a search-hop flick overrides the gaze, snappier
+      gx = glanceX; gy = glanceY; rate = 0.16;
+    }
     // idle adds a slow sway so it never looks frozen.
     var swayY = state === "idle" ? Math.sin(t * 0.6) * 0.10 : 0;
     var swayX = state === "idle" ? Math.sin(t * 0.9) * 0.04 : 0;
-    var targetX = g.x + swayX;
-    var targetY = g.y + swayY;
-    head.rotation.x = _lerp(head.rotation.x, targetX, dt, 0.08);
-    head.rotation.y = _lerp(head.rotation.y, targetY, dt, 0.08);
+    var targetX = gx + swayX;
+    var targetY = gy + swayY;
+    head.rotation.x = _lerp(head.rotation.x, targetX, dt, rate);
+    head.rotation.y = _lerp(head.rotation.y, targetY, dt, rate);
 
     // breathing: gentle vertical bob + scale, strongest at idle.
     var breathAmp = state === "idle" ? 1.0 : 0.5;
@@ -222,12 +230,19 @@ window.Face = (function () {
   }
   function setSpeaking(v) { speaking = !!v; }
   function jawPulse() { jawPulseUntil = performance.now() + 130; }
+  function searchGlance() {                 // one search hop: flick gaze to the next "shelf"
+    glanceSide = -glanceSide;
+    glanceY = 0.44 * glanceSide;            // alternate its-left / its-right
+    glanceX = -0.34;                        // and up (scanning the wiki)
+    glanceUntil = performance.now() + 900;
+  }
 
   return {
     init: init,
     setState: setState,
     setSpeaking: setSpeaking,
     jawPulse: jawPulse,
+    searchGlance: searchGlance,
     get state() { return state; },
     get enabled() { return enabled; },
   };

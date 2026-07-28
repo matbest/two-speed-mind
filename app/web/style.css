@@ -190,6 +190,24 @@ html, body {
   padding: 10px 14px;
   pointer-events: none;
 }
+/* live search trace: pages the fast brain opens, hop by hop (spec §52) */
+.search-trace {
+  position: absolute;
+  left: 12px; right: 12px; bottom: 40px;
+  max-height: 42%;
+  overflow: hidden;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  pointer-events: none;
+  text-align: left;
+}
+.trace-line {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0.9;
+}
+.trace-line.raw { color: var(--accent, #d0a24a); }
 .state-label {
   font-size: 11px;
   letter-spacing: 0.6px;
