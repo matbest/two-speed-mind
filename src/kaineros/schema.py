@@ -154,3 +154,16 @@ class Response:
     used: list = field(default_factory=list)  # list[Page] the answer drew on
     abstained: bool = False
     trace: Lookup = field(default_factory=Lookup)  # the retrieval record the why renders from
+
+
+@dataclass
+class SearchEvent:
+    """One step of the step-by-step wiki search, streamed as it happens (spec §52). The app turns
+    `reading` events into gaze-flicks + a debug trace and `token` events into a progressive answer +
+    TTS; the CLI prints them; the final `done` carries the grounded Response."""
+    kind: str                           # "reading" | "token" | "done"
+    gene: str = ""                      # reading: the page/snippet opened this hop
+    hop: int = 0                        # reading: 1-based hop number
+    raw: bool = False                   # reading: True = a raw conversation snippet (§53), not a fact
+    text: str = ""                      # token: an answer fragment (concatenate them for the answer)
+    response: "Response | None" = None  # done: the final grounded Response

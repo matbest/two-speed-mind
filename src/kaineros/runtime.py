@@ -11,7 +11,7 @@ import re
 import time
 
 from .interfaces import FastModel
-from .schema import Lookup, LookupHit, Page, Response, Turn
+from .schema import Lookup, LookupHit, Page, Provenance, Response, SearchEvent, Turn
 from .store import Store
 
 
@@ -53,6 +53,18 @@ def _tokens(text: str) -> set[str]:
         tokens |= _variants(t)
     return tokens
 
+
+def _content_words(text: str) -> set[str]:
+    """The distinct non-stopword WORDS of `text` (not their suffix variants) — the unit the search's
+    strength counts, so a page that covers two topics scores 2, not '2 because one word had 2 stems'."""
+    return {t for t in re.findall(r"[a-z0-9]+", text.lower()) if t not in _STOPWORDS}
+
+
+def _covers(qwords: set[str], page_tokens: set[str]) -> int:
+    """How many of the question's words the page covers (any suffix variant counts as a match)."""
+    return sum(1 for w in qwords if _variants(w) & page_tokens)
+
+
 CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
 HEDGE_PREFIX = "If I remember rightly: "
 
@@ -65,6 +77,7 @@ class Runtime:
         confidence_floor: str = "low",
         stale_after: float = 30 * 24 * 3600.0,
         route_k: int = 3,
+        confident_at: int = 2,
     ) -> None:
         self.store = store
         self.model = model
@@ -73,6 +86,9 @@ class Runtime:
         # two-step retrieval (spec §41, T16): route to the top-K matching pages by the index, then
         # read only those — the cheap fast brain sees a few pages, not every keyword match.
         self.route_k = route_k
+        # step-by-step search (spec §52): a page whose cue-overlap with the question reaches this
+        # bar is a strong hit — stop opening more (fast path). Below it, keep browsing to max_hops.
+        self.confident_at = confident_at
 
     def _hedge_reason(self, page: Page, now: float) -> str | None:
         """Why this page can't be asserted plainly — from provenance, never from prose (spec §6)."""
@@ -155,3 +171,94 @@ class Runtime:
             for p in used
         )
         return Response(answer=answer, why=why, used=used, abstained=False, trace=trace)
+
+    def search(self, question: str, buffer: list[Turn] | None = None, max_hops: int = 3):
+        """Step-by-step wiki search, STREAMED (spec §52). Instead of grabbing route_k pages at once,
+        browse the index hop by hop — open the best matching page, and if it's a strong hit stop;
+        otherwise keep looking, up to `max_hops` (the latency knob). When the compiled facts don't
+        settle it, dive into the raw conversation (a primary-source snippet, §46/§53). Yields
+        SearchEvents as it goes: a `reading` per hop, then `token`s for the answer, then `done` with
+        the grounded Response. Grounding is unchanged — the search is over real state; the model
+        phrases the result, it never decides what's true. `respond` stays the one-shot path.
+        """
+        floor = CONFIDENCE_ORDER[self.confidence_floor]
+        qwords = _content_words(question)
+        now = time.time()
+
+        # index read: score every FACT page by how many question WORDS it covers (arcs are a
+        # dug-into sub-tier, §53 — not in the recall index). Strongest first.
+        scored: list[tuple[Page, int]] = []
+        for page in self.store.pages():
+            if getattr(page, "kind", "fact") == "arc":
+                continue
+            cues = page.gene + " " + page.content + " " + " ".join(page.tags)
+            strength = _covers(qwords, _tokens(cues))
+            if strength and CONFIDENCE_ORDER[page.provenance.confidence] >= floor:
+                scored.append((page, strength))
+        scored.sort(
+            key=lambda ps: (ps[1], CONFIDENCE_ORDER[ps[0].provenance.confidence], ps[0].provenance.created_at),
+            reverse=True,
+        )
+
+        read: list[Page] = []
+        best_strength = 0
+        confident = False
+        hop = 0
+        for page, strength in scored:
+            if hop >= max_hops:
+                break
+            hop += 1
+            yield SearchEvent("reading", gene=page.gene, hop=hop, raw=False)
+            read.append(page)
+            best_strength = max(best_strength, strength)
+            if strength >= self.confident_at:  # a strong hit — stop browsing (the fast path)
+                confident = True
+                break
+
+        # §53: facts didn't settle it → dive into the raw conversation, retrieving the single most
+        # relevant snippet ON DEMAND (a few hundred tokens), not prefilling the whole history.
+        if not confident and hop < max_hops:
+            snippet = self._best_raw_snippet(qwords, beat=best_strength)
+            if snippet is not None:
+                hop += 1
+                gene, text = snippet
+                yield SearchEvent("reading", gene=gene, hop=hop, raw=True)
+                read.append(Page(gene=gene, content=text, kind="raw",
+                                 provenance=Provenance(stated=True, confidence="high", created_at=now)))
+
+        if not read:
+            resp = Response(
+                answer="I don't know.",
+                why=f"abstained: nothing matched above the '{self.confidence_floor}' confidence floor",
+                used=[], abstained=True,
+            )
+            yield SearchEvent("done", response=resp)
+            return
+
+        answer = self.model.answer(question, read, buffer or [])
+        reasons = {p.gene: self._hedge_reason(p, now) for p in read}
+        if any(reasons.values()):
+            answer = HEDGE_PREFIX + answer
+        why = "; ".join(
+            f"page '{p.gene}' ({'stated' if p.provenance.stated else 'inferred'}, "
+            f"confidence {p.provenance.confidence}, {reasons[p.gene] or 'fresh'})"
+            for p in read
+        )
+        resp = Response(answer=answer, why=why, used=list(read), abstained=False)
+        for chunk in re.findall(r"\S+\s*", answer):  # stream the answer at word granularity
+            yield SearchEvent("token", text=chunk)
+        yield SearchEvent("done", response=resp)
+
+    def _best_raw_snippet(self, qwords: set[str], beat: int = 0) -> tuple[str, str] | None:
+        """The single raw primary-source snippet (§46) that covers MORE question words than the best
+        fact page read — or None. Lets the search recover an implicit answer the compiled facts
+        dropped, without prefilling the whole history."""
+        best_s, best = beat, None
+        for page in self.store.pages():
+            if getattr(page, "kind", "fact") == "arc":
+                continue
+            for snip in page.provenance.source_texts:
+                s = _covers(qwords, _tokens(snip))
+                if s > best_s:
+                    best_s, best = s, (page.gene, snip)
+        return best
