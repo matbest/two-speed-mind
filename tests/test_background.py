@@ -26,12 +26,12 @@ class GatedSlowModel(FakeSlowModel):
 def test_turn_answers_while_extraction_is_still_blocked():
     slow = GatedSlowModel()
     s = Session(slow=slow, background=True)
-    resp = s.turn("bananas are yellow")  # returns although the extractor is still blocked
+    resp = s.turn("I like bananas")      # a told fact — returns although the extractor is blocked
     assert resp.answer == "OK"           # a statement is acknowledged immediately, not waited on
     assert s.backlog() == 1              # the backlog is real; extraction happens off the path
     slow.gate.set()
     assert s.flush(timeout=5)
-    assert s.store.page("bananas") is not None  # the worker landed and promoted it
+    assert s.store.page("i") is not None  # the worker landed and promoted it (fake gene = 1st word)
 
 
 def test_a_question_still_abstains_while_the_mind_is_empty():

@@ -17,7 +17,18 @@ import getpass
 import json
 import os
 import sys
+import time
 from pathlib import Path
+
+
+def interaction_log_path() -> Path:
+    """A JSONL log of every app interaction (input → route → answer → pages → timing), so you can
+    watch and debug what the app does. Lives beside the profiles/logs, tail-able."""
+    from kaineros import profiles
+
+    d = Path(profiles._base()) / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "app-interactions.jsonl"
 
 # --- Make the import-only engine importable -----------------------------------
 # The repo uses a src-layout (pyproject: pythonpath = ["src"]). When kaineros is
@@ -93,36 +104,54 @@ class Api:
     Simple and synchronous for the scaffold: one ``Session`` behind one method.
     """
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, logpath: Path | None = None) -> None:
         self._session = session
         self._window = None  # set in main() once the window exists — for pushing search events
+        self._logpath = logpath
 
     def whoami(self) -> str:
         """The OS user shown in the sidebar header."""
         return current_user()
 
+    def _log(self, **rec) -> None:
+        if self._logpath is None:
+            return
+        rec = {"at": time.strftime("%Y-%m-%d %H:%M:%S"), **rec}
+        try:
+            with open(self._logpath, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec) + "\n")
+        except Exception:  # noqa: BLE001 - logging must never break a turn
+            pass
+
     def ask(self, text: str) -> dict:
-        """One conversation turn. A greeting/statement returns immediately; a QUESTION runs the
-        step-by-step wiki search (spec §52), pushing `reading`/`token` events to the frontend as it
-        goes (the face's gaze-flicks + the streamed answer) and returning the final split result.
-        answer and why stay apart (the grounding principle)."""
-        from kaineros.cli import _is_question, _social_reply
+        """One conversation turn. A greeting or a told FACT returns immediately; anything else — a
+        question OR a bare topic ("morning routine") — runs the step-by-step wiki search (spec §52),
+        pushing `reading`/`token` events to the frontend (the face's gaze-flicks + the streamed
+        answer). answer and why stay apart (the grounding principle). Every turn is logged."""
+        from kaineros.cli import _is_question, _looks_like_statement, _social_reply
 
         text = (text or "").strip()
         if not text:
             return {"answer": "", "why": "", "abstained": False, "streamed": False}
+        t0 = time.time()
 
         social = _social_reply(text)
         if social is not None:  # greeting / thanks / small-talk — warm, zero model tokens
+            self._log(input=text, route="social", answer=social, seconds=round(time.time() - t0, 2))
             return {"answer": social, "why": "", "abstained": False, "streamed": False}
-        if not _is_question(text):  # a statement — stored in the background, acked
+
+        if _looks_like_statement(text) and not _is_question(text):  # a told fact — store + ack
             resp = self._session.turn(text)
+            self._log(input=text, route="statement", answer=resp.answer,
+                      seconds=round(time.time() - t0, 2))
             return {"answer": resp.answer, "why": resp.why,
                     "abstained": bool(getattr(resp, "abstained", False)), "streamed": False}
 
-        resp = None
+        # a query (question or bare topic) — step-by-step search, streamed
+        resp, reads = None, []
         for ev in self._session.runtime.search(text, self._session.buffer):
             if ev.kind == "reading":
+                reads.append(("raw:" if ev.raw else "") + ev.gene)
                 self._push({"type": "reading", "hop": ev.hop, "gene": ev.gene, "raw": ev.raw})
             elif ev.kind == "token":
                 self._push({"type": "token", "text": ev.text})
@@ -130,6 +159,9 @@ class Api:
                 resp = ev.response
         if resp is not None:
             self._session.last_response = resp
+        self._log(input=text, route="search", answer=(resp.answer if resp else ""), pages=reads,
+                  abstained=(bool(resp.abstained) if resp else False),
+                  seconds=round(time.time() - t0, 2))
         return {"answer": resp.answer if resp else "", "why": resp.why if resp else "",
                 "abstained": bool(resp.abstained) if resp else False, "streamed": True}
 
@@ -167,7 +199,9 @@ def main() -> int:
         backend, session = "fakes", build_session("fakes", profile)
     print(f"[kaineros] profile '{session.profile_name}' loaded — "
           f"{len(session.store.pages())} page(s), backend={backend}")
-    api = Api(session)
+    logpath = interaction_log_path()
+    print(f"[kaineros] interaction log: {logpath}")
+    api = Api(session, logpath=logpath)
     window = webview.create_window(
         title="Kaineros",
         url=str(INDEX_HTML),

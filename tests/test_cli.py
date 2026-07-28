@@ -109,3 +109,19 @@ def test_a_real_statement_still_acks_and_stores():
     resp = s.turn("I live in Berlin")
     assert resp.answer == "OK"                                # fact-statements are unchanged
     assert any("Berlin" in t.text for t in s.buffer)          # and buffered for the deep brain
+
+
+def test_bare_topics_are_queried_not_filed_as_a_fact():
+    from kaineros.cli import _looks_like_statement
+    # first-person declaratives are told facts (stored)...
+    assert _looks_like_statement("I live in Berlin")
+    assert _looks_like_statement("my car is a Tesla")
+    assert _looks_like_statement("we moved to London")
+    # ...but bare topics and imperatives are queries, not facts
+    assert not _looks_like_statement("good morning routine")
+    assert not _looks_like_statement("morning routine")
+    assert not _looks_like_statement("suggest a hobby for me")
+
+    s = Session()  # empty mind
+    assert s.turn("good morning routine").answer != "OK"   # answered (abstains here), not filed "OK"
+    assert s.turn("I love hiking").answer == "OK"           # a told fact is still stored + acked

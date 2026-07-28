@@ -72,6 +72,21 @@ def _is_question(text: str) -> bool:
     return t.split()[0].strip(",.'\"") in _Q_WORDS
 
 
+# A told FACT (store it) vs a query (answer it). A memory assistant should ASSUME a query unless the
+# turn looks like the user asserting something about themselves — so a bare topic ("morning routine")
+# or an imperative ("suggest a hobby") gets SEARCHED, not filed as a fact. Only a first-person
+# declarative ("I live in…", "my car is…", "we moved…") — or a deliberate update ("as of today…") —
+# is stored.
+_STATEMENT_START = re.compile(
+    r"^\s*(i|i'?m|im|i'?ve|ive|i'?ll|i'?d|my|mine|we|we'?re|our|as of|from now)\b", re.I
+)
+
+
+def _looks_like_statement(text: str) -> bool:
+    """True if the turn reads as a told fact to STORE (a first-person declarative), not a query."""
+    return bool(_STATEMENT_START.match(text or ""))
+
+
 # Social turns — greetings, thanks, farewells, "how are you", "what can you do" — get a warm,
 # DETERMINISTIC reply: a personal-assistant feel at ZERO model tokens (nothing to retrieve or store).
 # Each pattern FULL-MATCHES (^…$), so a real question that merely opens with a greeting word
@@ -265,12 +280,13 @@ class Session:
             self._wake.set()  # the answer never waits for the slow brain (spec §24)
         else:
             self.consolidate()
-        if _is_question(text):
-            resp = self.runtime.respond(text, self.buffer)
-        else:
-            # a statement, not a question: acknowledge (no retrieval, no phrasing call) — the deep
-            # brain stores it in the background. Cheaper, and no more "I don't know" to a statement.
+        if _looks_like_statement(text) and not _is_question(text):
+            # a told fact ("I live in…", "my car is…"): acknowledge (no retrieval) — the deep brain
+            # stores it in the background. A bare topic or imperative is NOT a fact; it's a query.
             resp = Response(answer="OK", why="statement - the deep brain will store it", used=[])
+        else:
+            # a question OR an ambiguous topic ("morning routine") — answer it, don't file it as "OK"
+            resp = self.runtime.respond(text, self.buffer)
         self.last_response = resp
         return resp
 
