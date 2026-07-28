@@ -41,20 +41,49 @@ def current_user() -> str:
         return getpass.getuser()
 
 
-def build_session(backend: str = "fakes") -> Session:
-    """Construct the engine Session.
+def build_session(backend: str = "fakes", profile: str = "default") -> Session:
+    """Construct the engine Session, loading a named profile's mind FROM DISK.
 
-    ``backend="fakes"`` (the scaffold default) → a deterministic, offline mind.
-    Other backends (``--cloud`` etc.) are a future seam: kaineros' own ``cli.main``
-    wires the cloud adapters; the desktop app would do the equivalent here. Kept on
-    fakes on purpose so the skeleton has no network/model dependency.
+    ``profile`` picks which mind on disk to load (``"default"`` = the OS user's own;
+    any other name = that profile, e.g. a ``bench-…`` persona). ``Session(store_dir=…)``
+    loads its promoted pages, so the wiki and search have real content — unlike the
+    bare in-memory scaffold.
+
+    ``backend="fakes"`` keeps the models offline (real pages, deterministic phrasing —
+    no keys needed). ``backend="claude"`` wires the real brains (deep = ``claude -p``,
+    fast = Haiku), the same mix ``kaineros --claude`` uses, so answers are real.
     """
-    if backend != "fakes":
-        # TODO(real-backend): import kaineros.cloud adapters and pass judge/slow/fast.
-        raise NotImplementedError(
-            f"backend {backend!r} not wired in the scaffold — using fakes only"
-        )
-    return Session()  # default args == deterministic fakes, no network
+    from kaineros import profiles
+
+    mind = (profiles.default_mind_dir()
+            if profile in (None, "", profiles.DEFAULT)
+            else profiles.mind_dir(profile))
+
+    if backend == "fakes":
+        s = Session(store_dir=mind)  # loads the profile's pages; deterministic fakes phrase them
+        s.profile_name = profile or profiles.DEFAULT
+        return s
+
+    if backend == "claude":
+        from kaineros.claude_cli import ClaudeCLIJudge, ClaudeCLISlowModel
+        from kaineros.claude_cli import preflight as cli_preflight
+        from kaineros.openrouter import FAST_MODEL, OpenRouterFastModel, ensure_key
+        from kaineros.openrouter import preflight as or_preflight
+
+        cli_preflight()          # proves the `claude` CLI is logged in
+        ensure_key()             # OpenRouter key for the fast brain
+        or_preflight(FAST_MODEL)
+        s = Session(store_dir=mind, background=True, cleanup_every=4)
+        s.compiler.judge = ClaudeCLIJudge(meter=s.deep_meter)
+        s.slow = ClaudeCLISlowModel(meter=s.deep_meter)
+        s.compiler.summariser = s.slow
+        s.compiler.arc_model = s.slow
+        s.runtime.model = OpenRouterFastModel(FAST_MODEL, meter=s.fast_meter)
+        s.cloud = True
+        s.profile_name = profile or profiles.DEFAULT
+        return s
+
+    raise NotImplementedError(f"backend {backend!r} not wired")
 
 
 class Api:
@@ -87,10 +116,30 @@ class Api:
         }
 
 
+def _arg(argv: list[str], flag: str, default: str) -> str:
+    """Read `--flag value` from argv, else the default."""
+    if flag in argv:
+        i = argv.index(flag)
+        if i + 1 < len(argv):
+            return argv[i + 1]
+    return default
+
+
 def main() -> int:
     import webview
 
-    session = build_session("fakes")
+    argv = sys.argv[1:]
+    # `python -m app` -> fakes on the default profile. Add `--claude` for real answers, and
+    # `--profile <name>` to load a specific mind (e.g. a bench persona).
+    backend = "claude" if "--claude" in argv else "fakes"
+    profile = _arg(argv, "--profile", "default")
+    try:
+        session = build_session(backend, profile)
+    except Exception as exc:  # noqa: BLE001 - a backend/login failure shouldn't crash the window
+        print(f"[kaineros] backend '{backend}' unavailable ({exc}); falling back to fakes.")
+        backend, session = "fakes", build_session("fakes", profile)
+    print(f"[kaineros] profile '{session.profile_name}' loaded — "
+          f"{len(session.store.pages())} page(s), backend={backend}")
     api = Api(session)
     webview.create_window(
         title="Kaineros",
